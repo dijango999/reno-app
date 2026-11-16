@@ -322,6 +322,43 @@ nav.tabs[hidden]{display:none}
   :root[data-theme="glass"] .fab{display:none}
   :root[data-theme="glass"] main{padding-bottom:calc(var(--safeb) + 110px)}
 }
+
+/* ---- Liquid Glass on every button (Glass theme) ----
+   Each button is a glass capsule: blur + colour boost of what's behind, a light rim that is
+   brightest top-left / bottom-right, a soft reflection across the top, depth shadows,
+   and a gentle squish when pressed. Main actions are lime-tinted glass, others clear glass. */
+:root[data-theme="glass"] .btn,:root[data-theme="glass"] .iconbtn,:root[data-theme="glass"] .fab,:root[data-theme="glass"] .fchip,:root[data-theme="glass"] .notice button,:root[data-theme="glass"] .keypad button,:root[data-theme="glass"] #navplus,:root[data-theme="glass"] .sortsel,:root[data-theme="glass"] .linkbtn.pillish{position:relative;isolation:isolate;border-radius:999px;
+  backdrop-filter:blur(14px) saturate(190%) brightness(1.12);-webkit-backdrop-filter:blur(14px) saturate(190%) brightness(1.12);
+  box-shadow:inset 0 1.5px 1px rgba(255,255,255,.5),inset 0 -1px 1px rgba(255,255,255,.14),inset 0 -8px 14px rgba(0,0,0,.14),0 8px 22px rgba(0,0,0,.32);
+  transition:scale .2s cubic-bezier(.3,1.4,.5,1),filter .2s,box-shadow .2s;-webkit-tap-highlight-color:transparent}
+:root[data-theme="glass"] .btn::before,:root[data-theme="glass"] .iconbtn::before,:root[data-theme="glass"] .fab::before,:root[data-theme="glass"] .fchip::before,:root[data-theme="glass"] .notice button::before,:root[data-theme="glass"] .keypad button::before,:root[data-theme="glass"] #navplus::before,:root[data-theme="glass"] .sortsel::before,:root[data-theme="glass"] .linkbtn.pillish::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1.2px;pointer-events:none;z-index:2;
+  background:linear-gradient(135deg,rgba(255,255,255,.9),rgba(255,255,255,.2) 28%,rgba(255,255,255,.04) 50%,rgba(255,255,255,.16) 72%,rgba(255,255,255,.7));
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;
+  mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0)}
+:root[data-theme="glass"] .btn::after,:root[data-theme="glass"] .iconbtn::after,:root[data-theme="glass"] .fab::after,:root[data-theme="glass"] .fchip::after,:root[data-theme="glass"] .notice button::after,:root[data-theme="glass"] .keypad button::after,:root[data-theme="glass"] #navplus::after,:root[data-theme="glass"] .sortsel::after,:root[data-theme="glass"] .linkbtn.pillish::after{content:"";position:absolute;left:9%;right:9%;top:2px;height:45%;border-radius:999px;pointer-events:none;z-index:2;
+  background:linear-gradient(180deg,rgba(255,255,255,.4),rgba(255,255,255,.05) 75%,rgba(255,255,255,0));opacity:.55}
+:root[data-theme="glass"] .btn:active,:root[data-theme="glass"] .iconbtn:active,:root[data-theme="glass"] .fab:active,:root[data-theme="glass"] .fchip:active,:root[data-theme="glass"] .notice button:active,:root[data-theme="glass"] .keypad button:active,:root[data-theme="glass"] #navplus:active,:root[data-theme="glass"] .sortsel:active,:root[data-theme="glass"] .linkbtn.pillish:active{scale:.95;filter:brightness(1.18)}
+/* clear glass */
+:root[data-theme="glass"] .btn.sec,:root[data-theme="glass"] .iconbtn,:root[data-theme="glass"] .fchip,:root[data-theme="glass"] .notice button,
+:root[data-theme="glass"] .keypad button,:root[data-theme="glass"] .sortsel{
+  background:linear-gradient(180deg,rgba(255,255,255,.15),rgba(255,255,255,.05) 55%,rgba(255,255,255,.08));border:0;color:var(--ink)}
+/* lime-tinted glass for main actions */
+:root[data-theme="glass"] .btn:not(.sec):not(.danger):not(.ghost),:root[data-theme="glass"] .fab{
+  background:linear-gradient(180deg,rgba(222,252,140,.96),rgba(190,236,80,.88) 55%,rgba(170,220,60,.92));color:#14170F;border:0;
+  box-shadow:inset 0 1.5px 1px rgba(255,255,255,.75),inset 0 -1px 1px rgba(255,255,255,.25),inset 0 -8px 14px rgba(60,90,0,.18),0 10px 26px rgba(201,242,92,.28),0 4px 10px rgba(0,0,0,.3)}
+/* red-tinted glass for delete / sign out */
+:root[data-theme="glass"] .btn.danger{background:linear-gradient(180deg,rgba(255,120,120,.26),rgba(255,90,90,.1) 55%,rgba(255,110,110,.16));color:#FFB4B4;border:0}
+:root[data-theme="glass"] .btn.ghost{background:transparent;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none}
+:root[data-theme="glass"] .btn.ghost::before,:root[data-theme="glass"] .btn.ghost::after{display:none}
+/* small details */
+:root[data-theme="glass"] .sortsel{padding:6px 12px;font-size:12px}
+:root[data-theme="glass"] .notice button{padding:7px 14px}
+:root[data-theme="glass"] .keypad button{font-weight:400}
+:root[data-theme="glass"] .fchip.on{background:linear-gradient(180deg,rgba(255,255,255,.26),rgba(255,255,255,.1));color:#fff}
+:root[data-theme="glass"] .btn:disabled{filter:saturate(.4) brightness(.8);opacity:.6}
+/* keep file pickers hidden inside glass buttons clickable */
+:root[data-theme="glass"] .btn > input[type=file]{z-index:3}
+
 html.is-locked #navplus{visibility:hidden}
 
 /* capsule bars: grey, with the latest month in lime */
@@ -366,6 +403,6 @@ html.is-locked #app,html.is-locked #layer,html.is-locked #nav{visibility:hidden}
 <div id="app"></div>
 <div id="layer"></div>
 
-<script src="app.js?v=16"></script>
+<script src="app.js?v=17"></script>
 </body>
 </html>
