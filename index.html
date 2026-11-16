@@ -296,7 +296,7 @@ nav.tabs[hidden]{display:none}
 
 /* ---- App Store–style tab bar (iOS 26) ----
    Light floating glass bar; the selected tab sits in a soft glass pill with its icon and label tinted;
-   the pill stretches like liquid while it slides; Add Payment is a separate round glass button. */
+   the pill stretches like liquid while it slides; Add Payment is a lime glass pill floating above the bar. */
 #navplus{display:none}
 :root[data-theme="glass"] .lg-bubble{background:linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.07));
   box-shadow:inset 0 1px 1px rgba(255,255,255,.45),inset 0 -1px 1px rgba(255,255,255,.1),0 4px 14px rgba(0,0,0,.25)}
@@ -305,22 +305,13 @@ nav.tabs[hidden]{display:none}
 @keyframes lgStretch{0%{scale:1 1}35%{scale:1.22 .9}70%{scale:.97 1.03}100%{scale:1 1}}
 :root[data-theme="glass"] nav#nav.tabs button.on,:root[data-theme="glass"] nav#nav.tabs button.on svg{color:var(--accent)}
 @media (max-width:899px){
-  :root[data-theme="glass"] nav#nav.tabs{left:14px;right:88px;bottom:calc(var(--safeb) + 12px);height:64px;padding:0 5px;align-items:center;
+  :root[data-theme="glass"] nav#nav.tabs{left:14px;right:14px;bottom:calc(var(--safeb) + 12px);height:64px;padding:0 5px;align-items:center;
     background:linear-gradient(180deg,rgba(58,62,70,.62),rgba(30,33,38,.72));
     backdrop-filter:blur(30px) saturate(190%) brightness(1.1);-webkit-backdrop-filter:blur(30px) saturate(190%) brightness(1.1);
     border:0;box-shadow:inset 0 1px 1px rgba(255,255,255,.4),inset 0 -1px 1px rgba(255,255,255,.08),0 0 0 .5px rgba(255,255,255,.14),0 18px 44px rgba(0,0,0,.5)}
   :root[data-theme="glass"] nav#nav.tabs button{height:54px;margin:0;font-size:10px;gap:1px}
   :root[data-theme="glass"] nav#nav.tabs button svg{width:23px;height:23px}
-  :root[data-theme="glass"] #navplus{display:grid;place-items:center;position:fixed;right:14px;bottom:calc(var(--safeb) + 12px);width:64px;height:64px;
-    border:0;border-radius:50%;z-index:21;color:var(--accent);
-    background:linear-gradient(180deg,rgba(58,62,70,.62),rgba(30,33,38,.72));
-    box-shadow:inset 0 1px 1px rgba(255,255,255,.4),inset 0 -1px 1px rgba(255,255,255,.08),0 0 0 .5px rgba(255,255,255,.14),0 18px 44px rgba(0,0,0,.5);
-    transition:scale .18s ease-out}
-  :root[data-theme="glass"] #navplus svg{width:26px;height:26px}
-  :root[data-theme="glass"] #navplus:active{scale:.92}
-  :root[data-theme="glass"] #navplus[hidden]{display:none}
-  :root[data-theme="glass"] .fab{display:none}
-  :root[data-theme="glass"] main{padding-bottom:calc(var(--safeb) + 110px)}
+  :root[data-theme="glass"] main{padding-bottom:calc(var(--safeb) + 170px)}
 }
 
 /* ---- Liquid Glass on every button (Glass theme) ----
@@ -356,10 +347,11 @@ nav.tabs[hidden]{display:none}
 :root[data-theme="glass"] .keypad button{font-weight:400}
 :root[data-theme="glass"] .fchip.on{background:linear-gradient(180deg,rgba(255,255,255,.26),rgba(255,255,255,.1));color:#fff}
 :root[data-theme="glass"] .btn:disabled{filter:saturate(.4) brightness(.8);opacity:.6}
+/* the Add Payment pill must stay floating (the rule above makes buttons position:relative) */
+:root[data-theme="glass"] .fab{position:fixed;padding:15px 24px;font-size:15.5px;z-index:21}
 /* keep file pickers hidden inside glass buttons clickable */
 :root[data-theme="glass"] .btn > input[type=file]{z-index:3}
 
-html.is-locked #navplus{visibility:hidden}
 
 /* capsule bars: grey, with the latest month in lime */
 :root[data-theme="glass"] .bars .stackbar{border-radius:999px;max-width:34px;background:linear-gradient(180deg,rgba(255,255,255,.36),rgba(255,255,255,.14));box-shadow:inset 0 1px 0 rgba(255,255,255,.3)}

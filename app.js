@@ -598,7 +598,7 @@ function render() {
       <div class="sync" id="syncline">${syncLine()}</div>
     </header>
     <main>${body}</main>
-    <button class="fab" data-act="add-payment"><span style="font-size:20px;line-height:1">＋</span> Add Payment</button>`;
+    <button class="fab" data-act="add-payment">Add Payment</button>`;
   window.scrollTo(0, scrollY);
   showNav();
 }
@@ -610,17 +610,12 @@ function showNav() {
     nav.innerHTML = TABS.map(([id, label, svg]) => `<button data-tab="${id}">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${svg}</svg>${label}</button>`).join('');
     document.getElementById('app').after(nav);
-    // round glass button next to the bar (like Search in the App Store)
-    const plus = document.createElement('button');
-    plus.id = 'navplus'; plus.className = 'lg'; plus.dataset.act = 'add-payment'; plus.setAttribute('aria-label', 'Add Payment');
-    plus.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>';
-    nav.after(plus);
   }
-  nav.hidden = false; document.getElementById('navplus').hidden = false;
+  nav.hidden = false;
   nav.querySelectorAll('[data-tab]').forEach(b => b.classList.toggle('on', !S.vendor && b.dataset.tab === S.tab));
   liquid(nav, 'nav');
 }
-function hideNav() { for (const id of ['nav', 'navplus']) { const n = document.getElementById(id); if (n) n.hidden = true; } }
+function hideNav() { for (const id of ['nav']) { const n = document.getElementById(id); if (n) n.hidden = true; } }
 function topActions() {
   if (S.vendor) return `<button class="btn sm sec" data-act="edit-vendor" data-name="${esc(S.vendor)}">Edit</button>`;
   if (S.tab === 'vendors') return `<button class="btn sm" data-act="new-vendor">Add Vendor</button>`;
