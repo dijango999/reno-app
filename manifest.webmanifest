@@ -1,6 +1,6 @@
 {
-  "name": "Reno Accounts",
-  "short_name": "Reno Accounts",
+  "name": "Reno App",
+  "short_name": "Reno App",
   "description": "Home renovation accounts, kept in your OneDrive.",
   "start_url": "./",
   "scope": "./",

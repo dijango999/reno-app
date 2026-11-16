@@ -1,6 +1,6 @@
-/* Reno Accounts — renovation accounts kept in OneDrive.
+/* Reno App — renovation accounts kept in OneDrive.
  *
- * Data lives in OneDrive › "Reno Accounts":
+ * Data lives in OneDrive › "Reno App":
  *   tracker.json          all payments, vendors, categories and budget (same format as the Mac app)
  *   Attachments/          bills, receipts and quotations (Attachments/Removed keeps deleted ones)
  *   Backups/              one copy of tracker.json per day, taken before the first change of the day
@@ -15,8 +15,8 @@ const CFG = {
   authority: 'https://login.microsoftonline.com/consumers/oauth2/v2.0',
   scopes: 'Files.ReadWrite User.Read offline_access',
   graph: 'https://graph.microsoft.com/v1.0',
-  folder: 'Documents/02 ACCOUNTS/Villa Renovation/Reno Accounts',
-  folderLabel: 'Villa Renovation › Reno Accounts',
+  folder: 'Documents/02 ACCOUNTS/Villa Renovation/Reno App',
+  folderLabel: 'Villa Renovation › Reno App',
   version: '1.0',
 };
 const REDIRECT = location.origin + location.pathname.replace(/index\.html$/, '');
@@ -464,7 +464,7 @@ function welcomeView() {
   const again = S.phase === 'needsignin';
   return `<div class="welcome">
     <img class="logo" src="icons/icon-192.png" alt="">
-    <h1>Reno Accounts</h1>
+    <h1>Reno App</h1>
     <p class="muted" style="margin:0">Your renovation payments, vendors, budget and bills — kept in your OneDrive, the same on your phone and your laptop.</p>
     <button class="btn wide" data-act="signin">${again ? 'Continue as ' + esc(S.account || 'your account') : 'Sign in with Microsoft'}</button>
     ${again ? `<button class="linkbtn" data-act="signin-other">Use a different account</button>` : `<p class="small faint" style="margin:0">Use the Microsoft account of the OneDrive where you want your data kept.</p>`}
@@ -914,7 +914,7 @@ function accountSheet() {
     <div class="group"><h4>Add to your Home Screen</h4>
       <ol class="steps"><li><b>iPhone:</b> open this page in Safari → tap Share → <b>Add to Home Screen</b>.</li>
       <li><b>Mac (Safari):</b> File → <b>Add to Dock</b>. <b>Chrome:</b> ⋮ → Cast, save and share → <b>Install page as app</b>.</li></ol></div>
-    <p class="small faint" style="text-align:center">Reno Accounts ${CFG.version}</p>`, { noSave: true });
+    <p class="small faint" style="text-align:center">Reno App ${CFG.version}</p>`, { noSave: true });
   $('#a-signout').onclick = () => { if (confirm('Sign out? Your data stays safe in OneDrive.')) signOut(); };
   $('#a-sync').onclick = async () => { await pull(true); toast('Up to date'); closeSheet(); };
   $('#a-export').onclick = exportExcel;
@@ -950,7 +950,7 @@ async function exportExcel() {
     const d = D(), X = window.XLSX, wb = X.utils.book_new();
     const add = (name, rows, widths) => { const ws = X.utils.aoa_to_sheet(rows); ws['!cols'] = widths.map(w => ({ wch: w })); X.utils.book_append_sheet(wb, ws, name); };
     const spent = totalSpent();
-    add('Summary', [['Reno Accounts — exported', new Date().toLocaleString('en-IN')], [], ['Total budget', d.totalBudget], ['Spent so far', spent], ['Cash left', d.totalBudget - spent],
+    add('Summary', [['Reno App — exported', new Date().toLocaleString('en-IN')], [], ['Total budget', d.totalBudget], ['Spent so far', spent], ['Cash left', d.totalBudget - spent],
       ['Planned (category estimates)', totalBudgeted()], ['Payments', d.payments.length], ['Pending amount', d.payments.filter(p => p.status !== 'Paid').reduce((s, p) => s + (+p.amount || 0), 0)]], [34, 22]);
     add('Payments', [['Date', 'Vendor', 'Category', 'Item', 'Amount', 'Mode', 'Status', 'Invoice', 'Notes', 'Documents'],
       ...sortPayments(d.payments, 'oldest').map(p => [p.date, p.vendor, p.category, p.item, +p.amount || 0, p.mode, p.status, p.invoice, p.notes, (p.attachments || []).map(a => a.file).join('; ')])],
@@ -962,7 +962,7 @@ async function exportExcel() {
       [24, 40, 14, 14, 10, 14, 14, 14, 9]);
     const cats = d.categories.map(c => c.name), vs = sortVendors(vendorStats().filter(v => v.total > 0), 'name');
     add('Vendor x Category', [['Vendor', ...cats, 'Total'], ...vs.map(v => [v.name, ...cats.map(c => v.byCat[c] || 0), v.total])], [28, ...cats.map(() => 14), 14]);
-    X.writeFile(wb, `Reno Accounts ${todayStr()}.xlsx`);
+    X.writeFile(wb, `Reno App ${todayStr()}.xlsx`);
   } catch (e) { toast(e.message); }
 }
 
