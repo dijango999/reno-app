@@ -19,7 +19,12 @@ const CFG = {
   folderLabel: 'Villa Renovation › Reno App',
   version: '1.0',
 };
-const REDIRECT = location.origin + location.pathname.replace(/index\.html$/, '');
+// The one address registered with Microsoft. Any other spelling of it (no slash, capitals,
+// index.html, the old reno-accounts name) is sent here first, so sign-in always matches.
+const CANON = 'https://dijango999.github.io/reno-app/';
+const ON_SITE = location.hostname === 'dijango999.github.io';
+if (ON_SITE && location.origin + location.pathname !== CANON) location.replace(CANON + location.search);
+const REDIRECT = ON_SITE ? CANON : location.origin + location.pathname.replace(/index\.html$/, '');
 
 const PAL = ['#3B82F6','#F97316','#10B981','#8B5CF6','#F43F5E','#06B6D4','#F59E0B','#6366F1','#84CC16','#EC4899','#14B8A6','#A855F7','#0EA5E9','#EAB308','#64748B'];
 const KINDS = ['Bill', 'Receipt', 'Quotation', 'Photo', 'Other'];
