@@ -916,6 +916,9 @@ function accountSheet() {
       <div class="kv"><span>Vendors</span><span>${d.vendors.length}</span></div>
       <div class="kv"><span>Categories</span><span>${d.categories.length}</span></div>
       <div class="kv"><span>Documents</span><span>${allDocuments().length}</span></div></div>
+    <div class="group"><h4>Appearance</h4>
+      <div class="seg-in" id="a-theme">${[['auto', 'Auto'], ['light', '☀️ Light'], ['dark', '🌙 Dark']].map(([v, t]) => `<button type="button" data-theme-v="${v}" class="${(ls.get('ra.theme') || 'auto') === v ? 'on' : ''}">${t}</button>`).join('')}</div>
+      <div class="small faint" style="margin-top:8px">Auto follows your iPhone or Mac setting.</div></div>
     <div class="group"><h4>Add to your Home Screen</h4>
       <ol class="steps"><li><b>iPhone:</b> open this page in Safari → tap Share → <b>Add to Home Screen</b>.</li>
       <li><b>Mac (Safari):</b> File → <b>Add to Dock</b>. <b>Chrome:</b> ⋮ → Cast, save and share → <b>Install page as app</b>.</li></ol></div>
@@ -923,6 +926,13 @@ function accountSheet() {
   $('#a-signout').onclick = () => { if (confirm('Sign out? Your data stays safe in OneDrive.')) signOut(); };
   $('#a-sync').onclick = async () => { await pull(true); toast('Up to date'); closeSheet(); };
   $('#a-export').onclick = exportExcel;
+  $('#a-theme').onclick = e => { const b = e.target.closest('[data-theme-v]'); if (!b) return; setTheme(b.dataset.themeV);
+    $('#a-theme').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); };
+}
+
+function setTheme(v) {
+  if (v === 'light' || v === 'dark') { document.documentElement.dataset.theme = v; ls.set('ra.theme', v); }
+  else { delete document.documentElement.dataset.theme; ls.del('ra.theme'); }
 }
 
 /* ---------------- document viewer ---------------- */
