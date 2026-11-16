@@ -5,9 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Reno App</title>
 <meta name="description" content="Home renovation accounts, kept in your OneDrive.">
-<meta name="theme-color" content="#F5F6FA" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0B0F17" media="(prefers-color-scheme: dark)">
-<script>try{var t=localStorage.getItem("ra.theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
+<meta name="theme-color" content="#0C0E11">
+<script>try{var t=localStorage.getItem("ra.theme")||"glass";if(t!=="auto")document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme="glass"}</script>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -214,6 +213,74 @@ nav.tabs button.on{color:var(--accent)}
 .kv span:last-child{color:var(--muted);text-align:right;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;font-size:14px}
 
+
+/* ✨ Glass theme — dark frosted cards, lime accent, mono numbers */
+:root[data-theme="glass"]{
+  --bg:#0C0E11; --card:rgba(255,255,255,.055); --ink:#F2F4F6; --muted:#A0A7B1; --faint:#6F7782; --line:rgba(255,255,255,.085); --track:rgba(255,255,255,.08);
+  --accent:#C9F25C; --accent2:#B5E244; --accentSoft:rgba(201,242,92,.13);
+  --good:#A6E36A; --goodSoft:rgba(166,227,106,.14); --warn:#F5C451; --warnSoft:rgba(245,196,81,.13); --bad:#FF6F6F; --badSoft:rgba(255,111,111,.13);
+  --hdr:rgba(12,14,17,.55); --navbg:rgba(28,31,36,.62); --gh:rgba(255,255,255,.03); --press:rgba(255,255,255,.06); --fill:rgba(255,255,255,.07);
+  --badInk:#FFB1B1; --warnInk:#FBD98C; --accentInk:#DDF7A0; --toast:#C9F25C; --toastInk:#14170F;
+  --r:20px; color-scheme:dark;
+}
+:root[data-theme="glass"] body{
+  background:
+    radial-gradient(900px 600px at 12% -5%, rgba(120,140,150,.22), transparent 60%),
+    radial-gradient(800px 600px at 95% 10%, rgba(201,242,92,.08), transparent 60%),
+    radial-gradient(1000px 800px at 50% 110%, rgba(90,100,120,.25), transparent 60%),
+    #0C0E11;
+  background-attachment:fixed;
+}
+:root[data-theme="glass"] .card,:root[data-theme="glass"] .tile,:root[data-theme="glass"] .list,:root[data-theme="glass"] .group{
+  background:linear-gradient(180deg,rgba(255,255,255,.075),rgba(255,255,255,.035));
+  backdrop-filter:blur(22px) saturate(140%);-webkit-backdrop-filter:blur(22px) saturate(140%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 10px 30px rgba(0,0,0,.25);
+}
+:root[data-theme="glass"] .num,:root[data-theme="glass"] .tile .val,:root[data-theme="glass"] .hero .big,:root[data-theme="glass"] .row .amt{
+  font-family:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:-.02em}
+:root[data-theme="glass"] .hero .big{font-weight:600}
+:root[data-theme="glass"] .btn:not(.sec):not(.danger):not(.ghost),:root[data-theme="glass"] .fab{color:#14170F}
+:root[data-theme="glass"] .fab{box-shadow:0 10px 30px rgba(201,242,92,.25)}
+:root[data-theme="glass"] .btn.sec,:root[data-theme="glass"] .fchip{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.1)}
+:root[data-theme="glass"] .iconbtn{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.12)}
+:root[data-theme="glass"] .sheet{background:#121418}
+:root[data-theme="glass"] .sheet-h{background:#16191E}
+:root[data-theme="glass"] .field input,:root[data-theme="glass"] .field select,:root[data-theme="glass"] .field textarea{background:rgba(255,255,255,.05)}
+:root[data-theme="glass"] .notice{border:1px solid rgba(255,255,255,.06)}
+:root[data-theme="glass"] .meter,:root[data-theme="glass"] .seg{background:rgba(255,255,255,.07)}
+/* Liquid-glass selection bubble: tabs, segment switches, filter pills */
+:root[data-theme="glass"] nav.tabs button.on,:root[data-theme="glass"] .seg-in button.on,:root[data-theme="glass"] .fchip.on{
+  background:linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,.08));
+  border:1px solid rgba(255,255,255,.22);color:#F7F9FA;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.35),inset 0 -1px 0 rgba(255,255,255,.06),0 6px 18px rgba(0,0,0,.28);
+  backdrop-filter:blur(16px) saturate(180%);-webkit-backdrop-filter:blur(16px) saturate(180%)}
+:root[data-theme="glass"] .seg-in{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:999px;padding:4px}
+:root[data-theme="glass"] .seg-in button{border-radius:999px;border:1px solid transparent;transition:background .25s}
+:root[data-theme="glass"] .fchip{border-radius:999px}
+:root[data-theme="glass"] .fchip.on .sw{background:var(--c,#C9F25C)}
+/* capsule bars: grey, with the latest month in lime */
+:root[data-theme="glass"] .bars .stackbar{border-radius:999px;max-width:34px;background:linear-gradient(180deg,rgba(255,255,255,.36),rgba(255,255,255,.14));box-shadow:inset 0 1px 0 rgba(255,255,255,.3)}
+:root[data-theme="glass"] .bars .stackbar i{background:transparent !important}
+:root[data-theme="glass"] .bars .col:last-child .stackbar{background:linear-gradient(180deg,#D8FA7A,#B5E244);box-shadow:0 8px 24px rgba(201,242,92,.25)}
+:root[data-theme="glass"] .bars .col:last-child small:first-child{background:#C9F25C;color:#14170F;padding:1px 7px;border-radius:99px;font-weight:700}
+/* floating pill menu on phones */
+@media (max-width:899px){
+  :root[data-theme="glass"] nav.tabs{left:14px;right:14px;bottom:calc(var(--safeb) + 10px);border-radius:999px;border:1px solid rgba(255,255,255,.1);
+    padding:0 6px;background:rgba(30,33,38,.66);backdrop-filter:blur(24px) saturate(150%);-webkit-backdrop-filter:blur(24px) saturate(150%);box-shadow:0 12px 34px rgba(0,0,0,.4)}
+
+  :root[data-theme="glass"] nav.tabs button{border-radius:999px;margin:5px 0;height:52px;transition:background .25s,color .25s}
+  :root[data-theme="glass"] nav.tabs button.on{color:#F2F4F6}
+  :root[data-theme="glass"] nav.tabs button.on svg{color:#C9F25C}
+  :root[data-theme="glass"] .fab{bottom:calc(var(--tabh) + var(--safeb) + 28px)}
+}
+@media (min-width:900px){
+  :root[data-theme="glass"] nav.tabs{background:rgba(18,20,24,.55);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-right-color:rgba(255,255,255,.07)}
+  :root[data-theme="glass"] nav.tabs button{border-radius:14px}
+  :root[data-theme="glass"] nav.tabs button.on{color:#F2F4F6}
+  :root[data-theme="glass"] nav.tabs button.on svg{color:#C9F25C}
+}
+:root[data-theme="glass"] header.top.scrolled{border-bottom-color:rgba(255,255,255,.06)}
+
 /* App lock */
 .lock{position:fixed;inset:0;z-index:100;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:calc(var(--safet) + 20px) 24px calc(var(--safeb) + 20px)}
 .lock h2{font-size:22px;font-weight:800}
@@ -233,6 +300,6 @@ html.is-locked #app,html.is-locked #layer{visibility:hidden}
 <div id="app"></div>
 <div id="layer"></div>
 
-<script src="app.js?v=10"></script>
+<script src="app.js?v=11"></script>
 </body>
 </html>

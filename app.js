@@ -1062,8 +1062,8 @@ function accountSheet() {
       <div class="kv"><span>Categories</span><span>${d.categories.length}</span></div>
       <div class="kv"><span>Documents</span><span>${allDocuments().length}</span></div></div>
     <div class="group"><h4>Appearance</h4>
-      <div class="seg-in" id="a-theme">${[['auto', 'Auto'], ['light', '☀️ Light'], ['dark', '🌙 Dark']].map(([v, t]) => `<button type="button" data-theme-v="${v}" class="${(ls.get('ra.theme') || 'auto') === v ? 'on' : ''}">${t}</button>`).join('')}</div>
-      <div class="small faint" style="margin-top:8px">Auto follows your iPhone or Mac setting.</div></div>
+      <div class="seg-in" id="a-theme">${[['glass', '✨ Glass'], ['dark', '🌙 Dark'], ['light', '☀️ Light'], ['auto', 'Auto']].map(([v, t]) => `<button type="button" data-theme-v="${v}" class="${(ls.get('ra.theme') || 'glass') === v ? 'on' : ''}">${t}</button>`).join('')}</div>
+      <div class="small faint" style="margin-top:8px">Glass is the default look. Auto follows your iPhone or Mac light/dark setting.</div></div>
     <div class="group"><h4>Security</h4>
       <button class="btn sec wide" id="a-lock">🔒 Passcode & Face ID / Touch ID · ${getLock() ? 'On' : 'Off'}</button></div>
     <div class="group"><h4>Add to your Home Screen</h4>
@@ -1082,8 +1082,8 @@ function accountSheet() {
 }
 
 function setTheme(v) {
-  if (v === 'light' || v === 'dark') { document.documentElement.dataset.theme = v; ls.set('ra.theme', v); }
-  else { delete document.documentElement.dataset.theme; ls.del('ra.theme'); }
+  ls.set('ra.theme', v);
+  if (v === 'auto') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = v;
 }
 
 /* ---------------- document viewer ---------------- */
