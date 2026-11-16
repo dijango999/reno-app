@@ -207,12 +207,26 @@ nav.tabs button.on{color:var(--accent)}
 .kv:last-child{border-bottom:0}
 .kv span:last-child{color:var(--muted);text-align:right;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;font-size:14px}
+
+/* App lock */
+.lock{position:fixed;inset:0;z-index:100;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:calc(var(--safet) + 20px) 24px calc(var(--safeb) + 20px)}
+.lock h2{font-size:22px;font-weight:800}
+.lock p{margin:0}
+html.is-locked #app,html.is-locked #layer{visibility:hidden}
+.pindots{display:flex;gap:14px;margin:10px 0 14px}
+.pindots i{width:14px;height:14px;border-radius:50%;border:2px solid var(--muted)}
+.pindots i.on{background:var(--ink);border-color:var(--ink)}
+.pindots.shake{animation:shake .35s}
+@keyframes shake{25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
+.keypad{display:grid;grid-template-columns:repeat(3,76px);gap:14px 22px}
+.keypad button{width:76px;height:76px;border-radius:50%;border:0;background:var(--fill);font-size:28px;font-weight:500;color:var(--ink)}
+.keypad button:active{background:var(--line)}
 </style>
 </head>
 <body>
 <div id="app"></div>
 <div id="layer"></div>
 
-<script src="app.js?v=4"></script>
+<script src="app.js?v=5"></script>
 </body>
 </html>

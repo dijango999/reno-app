@@ -149,6 +149,7 @@ async function accessToken() {
   await refreshing; return tokens.access;
 }
 function signOut() {
+  ls.del('ra.lock');
   ls.del('ra.account'); S.account = null;
   ls.del('ra.tokens'); ls.del('ra.cache'); ls.del('ra.etag'); tokens = null;
   S.data = null; S.etag = null; S.phase = 'welcome'; closeSheet(); render();
@@ -919,6 +920,8 @@ function accountSheet() {
     <div class="group"><h4>Appearance</h4>
       <div class="seg-in" id="a-theme">${[['auto', 'Auto'], ['light', '☀️ Light'], ['dark', '🌙 Dark']].map(([v, t]) => `<button type="button" data-theme-v="${v}" class="${(ls.get('ra.theme') || 'auto') === v ? 'on' : ''}">${t}</button>`).join('')}</div>
       <div class="small faint" style="margin-top:8px">Auto follows your iPhone or Mac setting.</div></div>
+    <div class="group"><h4>Security</h4>
+      <button class="btn sec wide" id="a-lock">🔒 Passcode & Face ID / Touch ID · ${getLock() ? 'On' : 'Off'}</button></div>
     <div class="group"><h4>Add to your Home Screen</h4>
       <ol class="steps"><li><b>iPhone:</b> open this page in Safari → tap Share → <b>Add to Home Screen</b>.</li>
       <li><b>Mac (Safari):</b> File → <b>Add to Dock</b>. <b>Chrome:</b> ⋮ → Cast, save and share → <b>Install page as app</b>.</li></ol></div>
@@ -926,6 +929,7 @@ function accountSheet() {
   $('#a-signout').onclick = () => { if (confirm('Sign out? Your data stays safe in OneDrive.')) signOut(); };
   $('#a-sync').onclick = async () => { await pull(true); toast('Up to date'); closeSheet(); };
   $('#a-export').onclick = exportExcel;
+  $('#a-lock').onclick = () => lockSettingsSheet();
   $('#a-theme').onclick = e => { const b = e.target.closest('[data-theme-v]'); if (!b) return; setTheme(b.dataset.themeV);
     $('#a-theme').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); };
 }
@@ -1085,8 +1089,140 @@ function trySilent() {
   S.phase = 'loading'; render(); signIn(false, true); return true;
 }
 
+/* ---------------- app lock: passcode + Face ID / Touch ID ----------------
+ * A privacy lock for this device. The passcode is stored only as a salted PBKDF2 hash.
+ * Face ID / Touch ID uses the phone's own biometric check (WebAuthn platform authenticator);
+ * the fingerprint or face never leaves the device. Forgot the passcode? Sign out and sign in
+ * with Microsoft again — that clears the lock and the copy kept on this device.
+ */
+const LOCK_KEY = 'ra.lock';
+const getLock = () => { try { return JSON.parse(ls.get(LOCK_KEY) || 'null'); } catch { return null; } };
+const setLock = v => v ? ls.set(LOCK_KEY, JSON.stringify(v)) : ls.del(LOCK_KEY);
+const fromB64url = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4)), c => c.charCodeAt(0));
+async function hashPin(pin, saltB64) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: fromB64url(saltB64), iterations: 150000 }, key, 256);
+  return b64url(bits);
+}
+async function bioAvailable() {
+  try { return !!(window.PublicKeyCredential && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()); } catch { return false; }
+}
+const bioName = () => /iPhone|iPad/.test(navigator.userAgent) ? 'Face ID' : /Macintosh/.test(navigator.userAgent) ? 'Touch ID' : 'fingerprint / face';
+async function bioRegister() {
+  const rnd = n => crypto.getRandomValues(new Uint8Array(n));
+  const cred = await navigator.credentials.create({ publicKey: {
+    challenge: rnd(32), rp: { name: 'Reno App', id: location.hostname },
+    user: { id: rnd(16), name: S.account || 'Reno App', displayName: 'Reno App lock' },
+    pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+    authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'discouraged' },
+    timeout: 60000 } });
+  return b64url(cred.rawId);
+}
+async function bioCheck(id) {
+  const a = await navigator.credentials.get({ publicKey: {
+    challenge: crypto.getRandomValues(new Uint8Array(32)),
+    allowCredentials: [{ type: 'public-key', id: fromB64url(id), transports: ['internal', 'hybrid'] }],
+    userVerification: 'required', timeout: 60000 } });
+  const flags = new Uint8Array(a.response.authenticatorData)[32];
+  return !!(flags & 0x04);                         // the device confirmed it was really you
+}
+
+let locked = false, hiddenAt = 0, pinBuf = '', failCount = +(ls.get('ra.lockFails') || 0), lockUntil = +(ls.get('ra.lockUntil') || 0);
+function showLock() {
+  const L = getLock(); if (!L || locked) return;
+  locked = true; pinBuf = '';
+  document.documentElement.classList.add('is-locked');
+  const el = document.createElement('div'); el.id = 'lock'; el.className = 'lock';
+  el.innerHTML = `<img class="logo" src="icons/icon-192.png" alt="">
+    <h2>Reno App is locked</h2><p class="muted" id="lockMsg">Enter your passcode</p>
+    <div class="pindots" id="pinDots">${'<i></i>'.repeat(L.len)}</div>
+    <div class="keypad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => `<button data-k="${n}">${n}</button>`).join('')}
+      ${L.bio ? `<button data-k="bio" aria-label="Unlock with ${bioName()}">${bioName() === 'Face ID' ? '🙂' : '👆'}</button>` : '<span></span>'}
+      <button data-k="0">0</button><button data-k="del" aria-label="Delete">⌫</button></div>
+    ${L.bio ? `<button class="linkbtn" data-k="bio">Unlock with ${bioName()}</button>` : ''}
+    <button class="linkbtn" data-k="forgot" style="color:var(--muted)">Forgot passcode?</button>`;
+  document.body.appendChild(el);
+  el.addEventListener('click', onLockKey);
+  if (L.bio) setTimeout(() => tryBio(), 350);
+}
+function hideLock() {
+  locked = false; document.getElementById('lock')?.remove(); document.documentElement.classList.remove('is-locked');
+  failCount = 0; ls.set('ra.lockFails', '0');
+}
+async function tryBio() {
+  const L = getLock(); if (!L?.bio || !locked) return;
+  try { if (await bioCheck(L.bio)) hideLock(); }
+  catch { const m = $('#lockMsg'); if (m) m.textContent = 'Enter your passcode'; }
+}
+function drawDots(err) {
+  const d = $('#pinDots'); if (!d) return;
+  d.querySelectorAll('i').forEach((x, i) => x.classList.toggle('on', i < pinBuf.length));
+  d.classList.toggle('shake', !!err);
+}
+async function onLockKey(e) {
+  const b = e.target.closest('[data-k]'); if (!b) return;
+  const k = b.dataset.k, L = getLock(), msg = $('#lockMsg');
+  if (k === 'bio') return tryBio();
+  if (k === 'forgot') {
+    if (confirm('Sign out of Reno App on this device? Your data stays safe in OneDrive. After signing in with Microsoft again you can set a new passcode.')) {
+      setLock(null); hideLock(); signOut();
+    }
+    return;
+  }
+  if (Date.now() < lockUntil) { msg.textContent = `Too many tries. Wait ${Math.ceil((lockUntil - Date.now()) / 1000)} seconds.`; return; }
+  if (k === 'del') { pinBuf = pinBuf.slice(0, -1); drawDots(); return; }
+  if (pinBuf.length >= L.len) return;
+  pinBuf += k; drawDots();
+  if (pinBuf.length < L.len) return;
+  const ok = (await hashPin(pinBuf, L.salt)) === L.hash;
+  if (ok) { hideLock(); return; }
+  failCount++; ls.set('ra.lockFails', String(failCount));
+  if (failCount >= 5) { lockUntil = Date.now() + 30000 * Math.pow(2, Math.min(failCount - 5, 5)); ls.set('ra.lockUntil', String(lockUntil)); }
+  msg.textContent = failCount >= 5 ? 'Too many tries. Please wait a moment.' : 'Wrong passcode. Try again.';
+  drawDots(true); setTimeout(() => { pinBuf = ''; drawDots(); }, 450);
+}
+document.addEventListener('visibilitychange', () => {
+  const L = getLock(); if (!L || S.phase === 'welcome' || S.phase === 'needsignin') return;
+  if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); if (!L.after) showLock(); }   // hide content in the app switcher
+  else if (Date.now() - hiddenAt >= (L.after || 0) * 1000) showLock();
+});
+
+async function lockSettingsSheet() {
+  const L = getLock(), canBio = await bioAvailable();
+  openSheet('Passcode & ' + bioName(), `
+    <div class="group"><h4>App lock</h4>
+      <div class="kv"><span>Status</span><span>${L ? '🔒 On' : 'Off'}</span></div>
+      ${L ? `<div class="kv"><span>${esc(bioName())}</span><span>${L.bio ? 'On' : 'Off'}</span></div>` : ''}
+      <p class="small faint" style="margin:8px 0 0">The lock is for this ${/iPhone|iPad/.test(navigator.userAgent) ? 'iPhone' : 'device'} only. Each phone sets its own passcode.</p></div>
+    <div class="group"><h4>${L ? 'Change passcode' : 'Turn on with a passcode'}</h4>
+      <div class="field"><label>New passcode (4–6 digits)</label><input id="pin1" type="password" inputmode="numeric" autocomplete="new-password" maxlength="6"></div>
+      <div class="field"><label>Type it again</label><input id="pin2" type="password" inputmode="numeric" autocomplete="new-password" maxlength="6"></div>
+      ${canBio ? `<label style="display:flex;gap:10px;align-items:center;font-weight:600"><input type="checkbox" id="pinBio" ${!L || L.bio ? 'checked' : ''} style="width:22px;height:22px"> Also unlock with ${esc(bioName())}</label>` : `<p class="small faint">${esc(bioName())} isn't available in this browser; the passcode will be used.</p>`}
+      <button class="btn wide" id="pinSave" style="margin-top:12px">${L ? 'Save new passcode' : 'Turn on lock'}</button>
+      <div class="small" id="pinMsg" style="margin-top:8px;color:var(--bad)"></div></div>
+    ${L ? `<div class="group"><h4>Lock again after</h4><div class="seg-in" id="lockAfter">${[[0, 'Right away'], [60, '1 min'], [300, '5 min']].map(([v, t]) => `<button type="button" data-v="${v}" class="${(L.after || 0) === v ? 'on' : ''}">${t}</button>`).join('')}</div></div>
+      <button class="btn danger wide" id="lockOff">Turn off lock</button>` : ''}`, { noSave: true });
+  $('#pinSave').onclick = async () => {
+    const a = $('#pin1').value.trim(), b = $('#pin2').value.trim(), m = $('#pinMsg');
+    if (!/^\d{4,6}$/.test(a)) { m.textContent = 'Use 4 to 6 digits.'; return; }
+    if (a !== b) { m.textContent = 'The two passcodes are different.'; return; }
+    const salt = randStr(22);
+    const next = { len: a.length, salt, hash: await hashPin(a, salt), after: L?.after ?? 0, bio: null };
+    if ($('#pinBio')?.checked) {
+      try { next.bio = L?.bio || await bioRegister(); }
+      catch { m.textContent = `${bioName()} wasn't set up (cancelled). The passcode still works.`; }
+    }
+    setLock(next); toast(L ? 'Passcode changed' : 'App lock is on'); if (!m.textContent) closeSheet(); else lockSettingsSheet();
+  };
+  $('#lockAfter')?.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return;
+    const cur = getLock(); cur.after = +b.dataset.v; setLock(cur);
+    $('#lockAfter').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); });
+  $('#lockOff')?.addEventListener('click', () => { if (confirm('Turn off the app lock on this device?')) { setLock(null); toast('App lock is off'); closeSheet(); } });
+}
+
 /* ---------------- start ---------------- */
 (async function start() {
+  if (getLock() && tokens) showLock();
   render();
   try { await handleRedirect(); } catch (e) { toast(e.message); }
   if (!tokens) { if (S.account && trySilent()) return; S.phase = S.account ? 'needsignin' : 'welcome'; render(); return; }
