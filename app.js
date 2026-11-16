@@ -563,14 +563,16 @@ function syncLine() {
 function render() {
   const app = $('#app');
   if (S.phase === 'loading') {
+    hideNav();
     app.innerHTML = `<div class="welcome"><img class="logo" src="icons/icon-192.png" alt=""><div class="muted"><span class="spin"></span> Loading…</div>
       <button class="btn sec" id="slowRetry" style="display:none" onclick="location.replace(location.pathname)">Taking a while — Try again</button></div>`;
     clearTimeout(window.__slow); window.__slow = setTimeout(() => { const b = document.getElementById('slowRetry'); if (b && S.phase === 'loading') b.style.display = ''; }, 15000);
     return;
   }
-  if (S.phase === 'welcome' || S.phase === 'needsignin') { app.innerHTML = welcomeView(); return; }
-  if (S.phase === 'import') { app.innerHTML = importView(); return; }
+  if (S.phase === 'welcome' || S.phase === 'needsignin') { hideNav(); app.innerHTML = welcomeView(); return; }
+  if (S.phase === 'import') { hideNav(); app.innerHTML = importView(); return; }
   if (S.phase === 'choose') {
+    hideNav();
     app.innerHTML = `<div class="welcome"><img class="logo" src="icons/icon-192.png" alt="">
       <h1>Where should Reno App keep your data?</h1>
       <p class="muted" style="margin:0">Pick a folder in your OneDrive (signed in as <b>${esc(S.account || '')}</b>). Everything — payments, bills, backups — is saved there. You can change it later.</p>
@@ -596,12 +598,29 @@ function render() {
       <div class="sync" id="syncline">${syncLine()}</div>
     </header>
     <main>${body}</main>
-    <button class="fab" data-act="add-payment"><span style="font-size:20px;line-height:1">＋</span> Add Payment</button>
-    <nav class="tabs">${TABS.map(([id, label, svg]) => `<button class="${!S.vendor && S.tab === id ? 'on' : ''}" data-tab="${id}">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${svg}</svg>${label}</button>`).join('')}</nav>`;
+    <button class="fab" data-act="add-payment"><span style="font-size:20px;line-height:1">＋</span> Add Payment</button>`;
   window.scrollTo(0, scrollY);
-  liquid($('nav.tabs'), 'nav');
+  showNav();
 }
+/** The tab bar is built once and kept, so the glass lens can glide instead of being rebuilt. */
+function showNav() {
+  let nav = document.getElementById('nav');
+  if (!nav) {
+    nav = document.createElement('nav'); nav.className = 'tabs'; nav.id = 'nav';
+    nav.innerHTML = TABS.map(([id, label, svg]) => `<button data-tab="${id}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${svg}</svg>${label}</button>`).join('');
+    document.getElementById('app').after(nav);
+    // round glass button next to the bar (like Search in the App Store)
+    const plus = document.createElement('button');
+    plus.id = 'navplus'; plus.className = 'lg'; plus.dataset.act = 'add-payment'; plus.setAttribute('aria-label', 'Add Payment');
+    plus.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>';
+    nav.after(plus);
+  }
+  nav.hidden = false; document.getElementById('navplus').hidden = false;
+  nav.querySelectorAll('[data-tab]').forEach(b => b.classList.toggle('on', !S.vendor && b.dataset.tab === S.tab));
+  liquid(nav, 'nav');
+}
+function hideNav() { for (const id of ['nav', 'navplus']) { const n = document.getElementById(id); if (n) n.hidden = true; } }
 function topActions() {
   if (S.vendor) return `<button class="btn sm sec" data-act="edit-vendor" data-name="${esc(S.vendor)}">Edit</button>`;
   if (S.tab === 'vendors') return `<button class="btn sm" data-act="new-vendor">Add Vendor</button>`;
@@ -825,10 +844,17 @@ function liquid(group, key) {
   const on = group.querySelector(':scope > .on');
   if (!on) { b.style.opacity = 0; return; }
   const r = { x: on.offsetLeft, y: on.offsetTop, w: on.offsetWidth, h: on.offsetHeight }, prev = lensAt[key];
-  const put = q => { b.style.transform = `translate(${q.x}px,${q.y}px)`; b.style.width = q.w + 'px'; b.style.height = q.h + 'px'; b.style.opacity = 1; };
-  if (prev && (prev.x !== r.x || prev.y !== r.y)) {
+  const put = q => { b.style.transform = `translate3d(${q.x}px,${q.y}px,0)`; b.style.width = q.w + 'px'; b.style.height = q.h + 'px'; b.style.opacity = 1; };
+  const glide = () => {
+    b.classList.add('moving'); clearTimeout(b.__t);
+    b.__t = setTimeout(() => b.classList.remove('moving'), 480);
+    put(r);
+  };
+  const placed = b.style.transform && b.style.opacity !== '0';
+  if (placed) { if (prev && (prev.x !== r.x || prev.y !== r.y)) glide(); else put(r); }
+  else if (prev && (prev.x !== r.x || prev.y !== r.y)) {          // group was redrawn: start from where it was
     b.style.transition = 'none'; put(prev); void b.offsetWidth; b.style.transition = '';
-    requestAnimationFrame(() => requestAnimationFrame(() => put(r)));
+    requestAnimationFrame(glide);
   } else put(r);
   lensAt[key] = r;
 }
@@ -843,7 +869,7 @@ document.addEventListener('pointerdown', e => {
 document.addEventListener('click', e => {
   const seg = e.target.closest('.seg-in'); if (seg) requestAnimationFrame(() => liquid(seg, seg.id || 'seg'));
 }, true);
-addEventListener('resize', () => { liquid($('nav.tabs'), 'nav'); document.querySelectorAll('.seg-in').forEach(g => liquid(g, g.id || 'seg')); });
+addEventListener('resize', () => { liquid($('#nav'), 'nav'); document.querySelectorAll('.seg-in').forEach(g => liquid(g, g.id || 'seg')); });
 
 /* ---------------- sheets (forms) ---------------- */
 let sheetCleanup = null;
@@ -1220,7 +1246,13 @@ function toast(msg) {
 document.addEventListener('click', e => {
   const t = e.target.closest('[data-tab],[data-act],[data-paycat],[data-dockind]');
   if (!t || t.closest('#scrim') && !t.dataset.act) return;
-  if (t.dataset.tab) { S.tab = t.dataset.tab; S.vendor = null; ls.set('ra.tab', S.tab); closeSheet(); render(); window.scrollTo(0, 0); return; }
+  if (t.dataset.tab) {
+    if (S.tab === t.dataset.tab && !S.vendor) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+    S.tab = t.dataset.tab; S.vendor = null; ls.set('ra.tab', S.tab); closeSheet();
+    if (t.closest('#nav')) { showNav(); requestAnimationFrame(() => requestAnimationFrame(() => { render(); window.scrollTo(0, 0); })); }
+    else { render(); window.scrollTo(0, 0); }
+    return;
+  }
   if ('paycat' in t.dataset) { S.filters.payCat = t.dataset.paycat; render(); return; }
   if ('dockind' in t.dataset) { S.filters.docKind = t.dataset.dockind; render(); return; }
   const id = t.dataset.id;
