@@ -924,7 +924,9 @@ function accountSheet() {
       <button class="btn sec wide" id="a-lock">🔒 Passcode & Face ID / Touch ID · ${getLock() ? 'On' : 'Off'}</button></div>
     <div class="group"><h4>Add to your Home Screen</h4>
       <ol class="steps"><li><b>iPhone:</b> open this page in Safari → tap Share → <b>Add to Home Screen</b>.</li>
-      <li><b>Mac (Safari):</b> File → <b>Add to Dock</b>. <b>Chrome:</b> ⋮ → Cast, save and share → <b>Install page as app</b>.</li></ol></div>
+      <li><b>Mac:</b> download the Mac app from the install page below.</li></ol>
+      <a class="btn sec wide" style="margin-top:10px;text-decoration:none" href="download/" target="_blank" rel="noopener">Install page — share this link</a>
+      <div class="small faint" style="margin-top:6px;text-align:center">dijango999.github.io/reno-app/download</div></div>
     <p class="small faint" style="text-align:center">Reno App ${CFG.version}</p>`, { noSave: true });
   $('#a-signout').onclick = () => { if (confirm('Sign out? Your data stays safe in OneDrive.')) signOut(); };
   $('#a-sync').onclick = async () => { await pull(true); toast('Up to date'); closeSheet(); };

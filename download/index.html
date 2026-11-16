@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Install Reno App</title>
+<link rel="icon" type="image/png" href="../icons/icon-192.png">
+<link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
+<style>
+:root{--bg:#F5F6FA;--card:#fff;--ink:#0F172A;--muted:#64748B;--line:#E8EBF2;--accent:#0F766E;--btnInk:#fff}
+@media (prefers-color-scheme:dark){:root{--bg:#0B0F17;--card:#151B26;--ink:#E8EDF5;--muted:#9AA6B8;--line:#232C3A;--accent:#2DD4BF;--btnInk:#06201D}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+main{max-width:560px;margin:0 auto;padding:40px 18px 60px;display:flex;flex-direction:column;gap:18px}
+.logo{width:80px;height:80px;border-radius:20px}
+h1{margin:0;font-size:32px;letter-spacing:-.02em}
+p{margin:0}.muted{color:var(--muted)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px}
+.card h2{margin:0 0 10px;font-size:19px}
+ol{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:6px}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;background:var(--accent);color:var(--btnInk);text-decoration:none;font-weight:700;border-radius:12px;padding:13px 16px;margin-top:12px}
+.btn.sec{background:transparent;color:var(--ink);border:1px solid var(--line)}
+small{color:var(--muted);display:block;margin-top:10px}
+</style>
+</head>
+<body>
+<main>
+  <img class="logo" src="../icons/icon-192.png" alt="">
+  <h1>Install Reno App</h1>
+  <p class="muted">Track renovation payments, vendors, budget and bills. Your data stays in your own OneDrive — sign in with your Microsoft account.</p>
+
+  <div class="card">
+    <h2>📱 iPhone or iPad</h2>
+    <ol>
+      <li>Open this page in <b>Safari</b>.</li>
+      <li>Tap <b>Open Reno App</b> below.</li>
+      <li>Tap the <b>Share</b> button → <b>Add to Home Screen</b> → <b>Add</b>.</li>
+      <li>Open Reno App from your Home Screen and sign in once.</li>
+    </ol>
+    <a class="btn" href="../">Open Reno App</a>
+  </div>
+
+  <div class="card">
+    <h2>💻 Mac</h2>
+    <ol>
+      <li>Download the installer below and open it.</li>
+      <li>Drag <b>Reno App</b> into <b>Applications</b>.</li>
+      <li>First time only: right-click Reno App → <b>Open</b> → <b>Open</b>.</li>
+      <li>Sign in with your Microsoft account.</li>
+    </ol>
+    <a class="btn" href="Reno-App-Installer.dmg" download="Reno App Installer.dmg">⬇︎ Download for Mac (.dmg)</a>
+    <a class="btn sec" href="Reno-App.pkg" download="Reno App.pkg">Or the .pkg installer</a>
+    <small>Works on Apple silicon and Intel Macs, macOS 12 or newer. macOS warns once because the app isn't from the App Store.</small>
+  </div>
+
+  <div class="card">
+    <h2>🖥️ Windows, Android or any browser</h2>
+    <p>Just open Reno App in your browser. In Chrome or Edge you can choose <b>Install app</b> from the menu.</p>
+    <a class="btn sec" href="../">Open Reno App</a>
+  </div>
+</main>
+</body>
+</html>
