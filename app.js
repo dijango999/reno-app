@@ -17,7 +17,7 @@ const CFG = {
   graph: 'https://graph.microsoft.com/v1.0',
   folder: 'Documents/02 ACCOUNTS/Villa Renovation/Reno App',
   folderLabel: 'Villa Renovation › Reno App',
-  version: '1.0',
+  version: '1.1',
 };
 // The one address registered with Microsoft. Any other spelling of it (no slash, capitals,
 // index.html, the old reno-accounts name) is sent here first, so sign-in always matches.
@@ -149,7 +149,7 @@ async function accessToken() {
   await refreshing; return tokens.access;
 }
 function signOut() {
-  ls.del('ra.lock');
+  ls.del('ra.lock'); ls.del('ra.loc'); LOC = null;
   ls.del('ra.account'); S.account = null;
   ls.del('ra.tokens'); ls.del('ra.cache'); ls.del('ra.etag'); tokens = null;
   S.data = null; S.etag = null; S.phase = 'welcome'; closeSheet(); render();
@@ -167,8 +167,52 @@ async function g(path, opts = {}) {
     return r;
   }
 }
-const encPath = rel => [...CFG.folder.split('/'), ...rel.split('/')].map(encodeURIComponent).join('/');
-const item = rel => `/me/drive/root:/${encPath(rel)}`;
+/* ---- where the data lives: a OneDrive folder each person chooses ----
+ * The choice is saved in OneDrive › Apps › Reno App › location.json, so every phone or
+ * laptop signed in to the same account finds the same folder without asking again. */
+const POINTER = 'Apps/Reno App/location.json';
+const LEGACY_PATH = 'Documents/02 ACCOUNTS/Villa Renovation/Reno App';   // where version 1 kept the data
+let LOC = null; try { LOC = JSON.parse(ls.get('ra.loc') || 'null'); } catch {}
+const encRel = rel => rel.split('/').filter(Boolean).map(encodeURIComponent).join('/');
+const item = rel => { if (!LOC) throw new Error('Choose where to keep your data first.'); return `/drives/${LOC.driveId}/items/${LOC.id}:/${encRel(rel)}`; };
+const locFull = (l = LOC) => l ? 'OneDrive › ' + (l.path ? l.path.split('/').join(' › ') : 'My files') : 'not chosen';
+const locShort = (l = LOC) => l ? (l.path ? l.path.split('/').slice(-2).join(' › ') : 'My files') : '';
+function folderPath(meta) {
+  const parent = decodeURIComponent((meta.parentReference?.path || '').replace(/^\/drive(s\/[^/]+)?\/root:?\/?/, ''));
+  return meta.root ? '' : [parent, meta.name].filter(Boolean).join('/');
+}
+function saveLoc(l) {
+  const changed = !LOC || LOC.id !== l.id;
+  LOC = { driveId: l.driveId, id: l.id, path: l.path || '' }; ls.set('ra.loc', JSON.stringify(LOC));
+  if (changed) { ls.del('ra.cache'); ls.del('ra.etag'); S.data = null; S.etag = null; }
+}
+async function readPointer() {
+  try {
+    const m = await (await g(`/me/drive/root:/${encRel(POINTER)}`)).json();
+    const t = await (await fetch(m['@microsoft.graph.downloadUrl'], { cache: 'no-store' })).text();
+    const p = JSON.parse(t); return p && p.id && p.driveId ? p : null;
+  } catch (e) { if (e.status === 404 || e instanceof SyntaxError) return null; throw e; }
+}
+async function writePointer(l) {
+  await g(`/me/drive/root:/${encRel(POINTER)}:/content`, { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ driveId: l.driveId, id: l.id, path: l.path, savedAt: isoNow(), by: S.account || '' }, null, 2) });
+}
+/** Finds the chosen folder. false = nothing chosen yet (ask the person). */
+async function resolveLocation() {
+  const p = await readPointer();
+  if (p) {
+    try { const m = await (await g(`/drives/${p.driveId}/items/${p.id}?$select=id,name,root,parentReference,deleted`)).json();
+      saveLoc({ driveId: p.driveId, id: p.id, path: folderPath(m) }); return true; }
+    catch (e) { if (e.status !== 404) throw e; }        // folder was deleted → choose again
+  }
+  if (LOC) { await writePointer(LOC).catch(() => {}); return true; }
+  try {
+    const f = await (await g(`/me/drive/root:/${encRel(LEGACY_PATH)}?$select=id,name,parentReference`)).json();
+    const l = { driveId: f.parentReference.driveId, id: f.id, path: LEGACY_PATH };
+    saveLoc(l); await writePointer(l).catch(() => {}); return true;
+  } catch (e) { if (e.status !== 404) throw e; }
+  return false;
+}
 
 /** Newest tracker.json from OneDrive, or null if there isn't one yet. */
 async function loadRemote() {
@@ -315,6 +359,90 @@ async function moveToRemoved(a) {
   } catch (e) { console.warn('move to Removed', e); }
 }
 
+
+/* ---------------- OneDrive folder browser ---------------- */
+function folderBrowser(box, { onChosen, current }) {
+  const st = { stack: [{ name: 'My files', driveId: null, id: null, path: '' }], items: [], loading: true, err: '' };
+  const here = () => st.stack[st.stack.length - 1];
+  async function load() {
+    st.loading = true; st.err = ''; draw();
+    try {
+      const h = here();
+      const url = h.id ? `/drives/${h.driveId}/items/${h.id}/children` : '/me/drive/root/children';
+      let next = url + '?$select=id,name,folder,file,parentReference,root&$top=200', all = [];
+      while (next) { const j = await (await g(next)).json(); all = all.concat(j.value || []); next = j['@odata.nextLink']; }
+      if (!h.id) { try { const r = await (await g('/me/drive/root?$select=id,parentReference')).json(); h.id = r.id; h.driveId = r.parentReference?.driveId; } catch {} }
+      st.items = all.filter(x => x.folder || x.name === 'tracker.json').sort((a, b) => (!!b.folder - !!a.folder) || cmpText(a.name, b.name));
+      if (!h.driveId && all[0]) h.driveId = all[0].parentReference?.driveId;
+    } catch (e) { st.err = e.message; }
+    st.loading = false; draw();
+  }
+  function draw() {
+    const h = here(), hasData = st.items.some(x => x.name === 'tracker.json'), atRoot = st.stack.length === 1;
+    box.innerHTML = `<div class="list" style="text-align:left">
+      <div class="gh" style="text-transform:none;letter-spacing:0;align-items:center;gap:8px">
+        ${atRoot ? '' : `<button class="linkbtn" data-b="up" style="padding:0">‹ Back</button>`}
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📁 ${esc(st.stack.map(x => x.name).join(' › '))}</span></div>
+      ${st.loading ? '<div class="empty"><span class="spin"></span></div>' : st.err ? `<div class="empty" style="color:var(--bad)">${esc(st.err)}</div>` :
+        (st.items.map((x, i) => x.folder
+          ? `<button class="row" data-b="open" data-i="${i}"><span class="ic" style="--c:#3B82F6">📁</span><span class="main"><span class="t">${esc(x.name)}</span><span class="s">${x.folder.childCount} item${x.folder.childCount === 1 ? '' : 's'}</span></span><span class="faint">›</span></button>`
+          : `<div class="row" style="cursor:default"><span class="ic" style="--c:#10B981">✅</span><span class="main"><span class="t">Reno App data found here</span><span class="s">tracker.json</span></span></div>`).join('')
+          || '<div class="empty">No folders here.</div>')}
+    </div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn sec" data-b="new" style="flex:1">＋ New folder</button>
+      <button class="btn" data-b="use" style="flex:1.4" ${atRoot || st.loading ? 'disabled' : ''}>${hasData ? 'Use this data' : 'Use this folder'}</button>
+    </div>
+    <div class="small faint" style="margin-top:6px">${atRoot ? 'Open a folder, or tap “New folder” to make one (e.g. “Reno App”).' : `Data will be kept in <b>${esc(locFull({ path: here().path }))}</b>.`}</div>`;
+  }
+  box.addEventListener('click', async e => {
+    const b = e.target.closest('[data-b]'); if (!b || st.loading) return;
+    if (b.dataset.b === 'up') { st.stack.pop(); load(); }
+    else if (b.dataset.b === 'open') { const x = st.items[+b.dataset.i]; st.stack.push({ name: x.name, id: x.id, driveId: x.parentReference?.driveId || here().driveId, path: [here().path, x.name].filter(Boolean).join('/') }); load(); }
+    else if (b.dataset.b === 'new') {
+      const name = (prompt('Name for the new folder:', 'Reno App') || '').trim().replace(/[\\/:*?"<>|]/g, ' ');
+      if (!name) return;
+      try {
+        const h = here(), url = h.id ? `/drives/${h.driveId}/items/${h.id}/children` : '/me/drive/root/children';
+        const f = await (await g(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, folder: {}, '@microsoft.graph.conflictBehavior': 'rename' }) })).json();
+        st.stack.push({ name: f.name, id: f.id, driveId: f.parentReference?.driveId || h.driveId, path: [h.path, f.name].filter(Boolean).join('/') }); load();
+      } catch (err) { toast(err.message); }
+    } else if (b.dataset.b === 'use') { const h = here(); onChosen({ driveId: h.driveId, id: h.id, path: h.path }); }
+  });
+  load();
+}
+
+/** Switches to a folder. If it is empty and there is data now, offers to copy it there. */
+async function chooseFolder(f) {
+  try {
+    if (LOC && f.id === LOC.id) { closeSheet(); return; }
+    let hasData = false;
+    try { await g(`/drives/${f.driveId}/items/${f.id}:/tracker.json?$select=id`); hasData = true; } catch (e) { if (e.status !== 404) throw e; }
+    const prev = LOC, current = S.data && prev ? await loadRemote().catch(() => null) : null;
+    if (!hasData && current) {
+      if (!confirm(`Copy your data (${current.data.payments.length} payments and all bills) to “${locFull(f)}” and use it from there?\n\nThe old folder is left as it is, as a safe copy.`)) return;
+      toast('Copying your data…');
+      try {   // bills: OneDrive copies the whole Attachments folder by itself
+        const att = await (await g(item('Attachments') + '?$select=id')).json();
+        await g(`/drives/${prev.driveId}/items/${att.id}/copy`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ parentReference: { driveId: f.driveId, id: f.id } }) });
+      } catch (e) { if (e.status !== 404) throw e; }
+      saveLoc(f);
+      await putTracker(current.data, null, true);
+    } else if (hasData && current && !confirm(`“${locFull(f)}” already has Reno App data. Switch to that data? (Your current folder is not changed.)`)) return;
+    else saveLoc(f);
+    await writePointer(LOC);
+    closeSheet(); S.phase = 'loading'; render();
+    await pull(true);
+    if (S.phase === 'ready') toast('Now using ' + locShort());
+  } catch (e) { toast(e.message); }
+}
+function changeFolderSheet() {
+  openSheet('Where to keep your data', `<p class="small muted" style="margin:0 0 10px">Now: <b>${esc(locFull())}</b></p><div id="sheetBrowser"></div>`, { noSave: true });
+  folderBrowser($('#sheetBrowser'), { onChosen: f => chooseFolder(f) });
+}
+
 /* ---------------- figures ---------------- */
 const D = () => S.data;
 const budgeted = c => (+c.quoted || 0) * (1 + (+c.contingency || 0));
@@ -437,6 +565,15 @@ function render() {
   if (S.phase === 'loading') { app.innerHTML = `<div class="welcome"><img class="logo" src="icons/icon-192.png" alt=""><div class="muted"><span class="spin"></span> Loading…</div></div>`; return; }
   if (S.phase === 'welcome' || S.phase === 'needsignin') { app.innerHTML = welcomeView(); return; }
   if (S.phase === 'import') { app.innerHTML = importView(); return; }
+  if (S.phase === 'choose') {
+    app.innerHTML = `<div class="welcome"><img class="logo" src="icons/icon-192.png" alt="">
+      <h1>Where should Reno App keep your data?</h1>
+      <p class="muted" style="margin:0">Pick a folder in your OneDrive (signed in as <b>${esc(S.account || '')}</b>). Everything — payments, bills, backups — is saved there. You can change it later.</p>
+      <div id="browser"></div>
+      <button class="linkbtn" data-act="signin-other" style="color:var(--muted)">Use a different Microsoft account</button></div>`;
+    folderBrowser($('#browser'), { onChosen: f => chooseFolder(f) });
+    return;
+  }
   const scrollY = window.scrollY;
   const title = S.vendor ? S.vendor : (TABS.find(t => t[0] === S.tab) || TABS[0])[1];
   let body = '';
@@ -481,7 +618,7 @@ function importView() {
   return `<div class="welcome">
     <img class="logo" src="icons/icon-192.png" alt="">
     <h1>Bring in your data</h1>
-    <p class="muted" style="margin:0">Signed in as <b>${esc(S.account || '')}</b>. There is no “${esc(CFG.folderLabel)}” folder in this OneDrive yet.</p>
+    <p class="muted" style="margin:0">Signed in as <b>${esc(S.account || '')}</b>. There is no Reno App data in <b>${esc(locFull())}</b> yet.</p>
     <div class="group" style="margin:0">
       <h4>From the Mac app</h4>
       <p class="small muted" style="margin:0 0 10px">On your laptop, choose the <b>Renovation Tracker</b> folder (the one with tracker.json, Attachments and Backups). Everything is copied into OneDrive; the original folder is not changed.</p>
@@ -492,6 +629,7 @@ function importView() {
       <div id="importStatus" class="small muted" style="margin-top:10px"></div>
     </div>
     <button class="linkbtn" data-act="start-empty">Start with empty data instead</button>
+    <button class="linkbtn" data-act="change-folder">Choose a different folder</button>
     <button class="linkbtn" data-act="signin-other" style="color:var(--muted)">Use a different Microsoft account</button>
   </div>`;
 }
@@ -711,7 +849,7 @@ function wireDocs(listId, ctx, ownerFn, labelFn) {
   $('#' + listId).addEventListener('click', e => {
     const b = e.target.closest('[data-rm]'); if (!b) return;
     const a = ctx.atts[+b.dataset.rm];
-    if (!confirm(`Remove “${a.name}”? It is kept in OneDrive › ${CFG.folderLabel} › Attachments › Removed.`)) return;
+    if (!confirm(`Remove “${a.name}”? It is kept in ${locShort()} › Attachments › Removed.`)) return;
     ctx.atts.splice(+b.dataset.rm, 1); ctx.removed.push(a); draw();
   });
   $('#' + listId + '-file').addEventListener('change', async e => {
@@ -907,9 +1045,10 @@ function accountSheet() {
       <div style="min-width:0"><b style="display:block;overflow:hidden;text-overflow:ellipsis">${esc(S.account || 'Signed in')}</b><span class="small" style="color:var(--good)">✓ Signed in to OneDrive</span></div></div>
       <button class="btn danger wide" style="margin-top:12px" id="a-signout">Sign out</button></div>
     <div class="group"><h4>OneDrive data</h4>
-      <div class="kv"><span>Folder</span><span>OneDrive › ${esc(CFG.folderLabel)}</span></div>
+      <div class="kv"><span>Folder</span><span>${esc(locFull())}</span></div>
       <div class="kv"><span>Last synced</span><span>${S.sync.at ? timeStr(S.sync.at) : 'Not yet'}</span></div>
-      <div class="kv"><span>Daily backups</span><span>${esc(CFG.folderLabel)} › Backups</span></div>
+      <div class="kv"><span>Daily backups</span><span>${esc(locShort())} › Backups</span></div>
+      <button class="btn sec wide" style="margin-top:10px" id="a-folder">📁 Change folder…</button>
       <button class="btn sec wide" style="margin-top:10px" id="a-sync">↻ Sync now</button>
       <button class="btn sec wide" style="margin-top:8px" id="a-export">⬇︎ Export to Excel</button></div>
     <div class="group"><h4>Your data</h4>
@@ -929,6 +1068,7 @@ function accountSheet() {
       <div class="small faint" style="margin-top:6px;text-align:center">dijango999.github.io/reno-app/download</div></div>
     <p class="small faint" style="text-align:center">Reno App ${CFG.version}</p>`, { noSave: true });
   $('#a-signout').onclick = () => { if (confirm('Sign out? Your data stays safe in OneDrive.')) signOut(); };
+  $('#a-folder').onclick = () => changeFolderSheet();
   $('#a-sync').onclick = async () => { await pull(true); toast('Up to date'); closeSheet(); };
   $('#a-export').onclick = exportExcel;
   $('#a-lock').onclick = () => lockSettingsSheet();
@@ -958,7 +1098,7 @@ async function viewDoc(file, name) {
       body.innerHTML = `<iframe src="${URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }))}"></iframe>`;
     } else body.innerHTML = `<div style="color:#fff;text-align:center"><div style="font-size:48px">📄</div><p>${esc(name)}</p><a class="btn" href="${esc(url)}" target="_blank" rel="noopener">Open document</a></div>`;
   } catch (e) {
-    v.querySelector('.vb').innerHTML = `<p style="color:#fff">${e.status === 404 ? 'This file is not in OneDrive › ' + esc(CFG.folderLabel) + ' › Attachments.' : esc(e.message)}</p>`;
+    v.querySelector('.vb').innerHTML = `<p style="color:#fff">${e.status === 404 ? 'This file is not in ' + esc(locFull()) + ' › Attachments.' : esc(e.message)}</p>`;
   }
 }
 
@@ -1050,6 +1190,7 @@ document.addEventListener('click', e => {
     case 'signin': signIn(false); break;
     case 'signin-other': signIn(true); break;
     case 'start-empty': startEmpty(); break;
+    case 'change-folder': changeFolderSheet(); break;
     case 'account': accountSheet(); break;
     case 'export': exportExcel(); break;
     case 'add-payment': paymentForm(null, t.dataset.vendor); break;
@@ -1231,6 +1372,9 @@ async function lockSettingsSheet() {
   // Show the last synced copy straight away, then refresh from OneDrive.
   try { const c = JSON.parse(ls.get('ra.cache') || 'null'); if (c) { S.data = normalize(c); S.etag = ls.get('ra.etag') || null; S.phase = 'ready'; render(); } } catch {}
   try { await accessToken(); } catch (e) { if (e instanceof AuthError) { if (trySilent()) return; S.phase = 'needsignin'; render(); return; } }
+  try {
+    if (!(await resolveLocation())) { S.phase = 'choose'; render(); return; }
+  } catch (e) { if (!S.data) { S.phase = 'ready'; } setSync('bad', e.status === 0 ? 'Offline — showing the last synced copy' : e.message); }
   await pull(true);
   if (S.phase === 'loading') { S.phase = 'ready'; if (!S.data) S.phase = 'needsignin'; render(); }
 })();
