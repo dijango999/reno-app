@@ -562,7 +562,12 @@ function syncLine() {
 
 function render() {
   const app = $('#app');
-  if (S.phase === 'loading') { app.innerHTML = `<div class="welcome"><img class="logo" src="icons/icon-192.png" alt=""><div class="muted"><span class="spin"></span> Loading…</div></div>`; return; }
+  if (S.phase === 'loading') {
+    app.innerHTML = `<div class="welcome"><img class="logo" src="icons/icon-192.png" alt=""><div class="muted"><span class="spin"></span> Loading…</div>
+      <button class="btn sec" id="slowRetry" style="display:none" onclick="location.replace(location.pathname)">Taking a while — Try again</button></div>`;
+    clearTimeout(window.__slow); window.__slow = setTimeout(() => { const b = document.getElementById('slowRetry'); if (b && S.phase === 'loading') b.style.display = ''; }, 15000);
+    return;
+  }
   if (S.phase === 'welcome' || S.phase === 'needsignin') { app.innerHTML = welcomeView(); return; }
   if (S.phase === 'import') { app.innerHTML = importView(); return; }
   if (S.phase === 'choose') {
