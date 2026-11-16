@@ -163,10 +163,15 @@ nav.tabs button.on{color:var(--accent)}
 .field label{font-size:12.5px;color:var(--muted);font-weight:600}
 .field input,.field select,.field textarea{border:1px solid var(--line);background:var(--card);border-radius:12px;padding:11px 12px;font-size:16px;outline:none;width:100%;min-height:44px}
 .field textarea{min-height:70px;resize:vertical}
+.field input:not(.amount-in),.field select{height:48px}
+.field input[type="date"]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;display:block;text-align:left;line-height:24px}
+.field input[type="date"]::-webkit-date-and-time-value{text-align:left;margin:0}
+.field input[type="date"]::-webkit-calendar-picker-indicator{opacity:.6}
 .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accentSoft)}
 .field .hint{font-size:11.5px;color:var(--faint)}
 .amount-in{font-size:26px !important;font-weight:700}
-.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+.two > .field{min-width:0}
 .seg-in{display:flex;background:var(--fill);border-radius:12px;padding:3px;gap:3px}
 .seg-in button{flex:1;border:0;background:none;border-radius:9px;padding:8px 4px;font-size:13.5px;font-weight:600;color:var(--muted)}
 .seg-in button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
@@ -248,16 +253,42 @@ nav.tabs button.on{color:var(--accent)}
 :root[data-theme="glass"] .field input,:root[data-theme="glass"] .field select,:root[data-theme="glass"] .field textarea{background:rgba(255,255,255,.05)}
 :root[data-theme="glass"] .notice{border:1px solid rgba(255,255,255,.06)}
 :root[data-theme="glass"] .meter,:root[data-theme="glass"] .seg{background:rgba(255,255,255,.07)}
-/* Liquid-glass selection bubble: tabs, segment switches, filter pills */
-:root[data-theme="glass"] nav.tabs button.on,:root[data-theme="glass"] .seg-in button.on,:root[data-theme="glass"] .fchip.on{
-  background:linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,.08));
-  border:1px solid rgba(255,255,255,.22);color:#F7F9FA;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.35),inset 0 -1px 0 rgba(255,255,255,.06),0 6px 18px rgba(0,0,0,.28);
-  backdrop-filter:blur(16px) saturate(180%);-webkit-backdrop-filter:blur(16px) saturate(180%)}
-:root[data-theme="glass"] .seg-in{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:999px;padding:4px}
-:root[data-theme="glass"] .seg-in button{border-radius:999px;border:1px solid transparent;transition:background .25s}
+/* ---- Liquid Glass ----
+   .lg = a glass lens: strong blur + colour boost of what's behind it, a bright light rim
+   (brighter top-left and bottom-right), a soft reflection across the top, and depth shadows.
+   .lg-bubble = the selection lens that slides & springs between tabs and switches. */
+.lg-bubble{display:none}
+:root[data-theme="glass"] .lg{
+  position:relative;isolation:isolate;border-radius:999px;
+  background:linear-gradient(180deg,rgba(255,255,255,.17),rgba(255,255,255,.05) 55%,rgba(255,255,255,.09));
+  backdrop-filter:blur(14px) saturate(200%) brightness(1.18) contrast(1.05);
+  -webkit-backdrop-filter:blur(14px) saturate(200%) brightness(1.18) contrast(1.05);
+  box-shadow:inset 0 1.5px 1px rgba(255,255,255,.55),inset 0 -1px 1px rgba(255,255,255,.18),
+    inset 0 0 14px rgba(255,255,255,.08),inset 0 -10px 18px rgba(0,0,0,.18),0 10px 28px rgba(0,0,0,.38),0 2px 6px rgba(0,0,0,.25)}
+:root[data-theme="glass"] .lg::before{  /* light rim */
+  content:"";position:absolute;inset:0;border-radius:inherit;padding:1.3px;pointer-events:none;z-index:1;
+  background:linear-gradient(135deg,rgba(255,255,255,.95),rgba(255,255,255,.22) 28%,rgba(255,255,255,.04) 50%,rgba(255,255,255,.18) 72%,rgba(255,255,255,.75));
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;
+  mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0)}
+:root[data-theme="glass"] .lg::after{   /* reflection across the top */
+  content:"";position:absolute;left:10%;right:10%;top:2px;height:46%;border-radius:999px;pointer-events:none;z-index:1;
+  background:linear-gradient(180deg,rgba(255,255,255,.42),rgba(255,255,255,.06) 70%,rgba(255,255,255,0));opacity:.6}
+:root[data-theme="glass"] .lg-bubble{
+  display:block;position:absolute;left:0;top:0;z-index:0;pointer-events:none;
+  transition:transform .55s cubic-bezier(.34,1.45,.55,1),width .55s cubic-bezier(.34,1.45,.55,1),height .55s cubic-bezier(.34,1.45,.55,1),opacity .2s;
+  will-change:transform}
+:root[data-theme="glass"] .lg-bubble.press{transition-duration:.18s;scale:1.07 1.12}
+:root[data-theme="glass"] nav.tabs button,:root[data-theme="glass"] .seg-in button{position:relative;z-index:1;background:transparent !important;border-color:transparent !important;box-shadow:none !important}
+:root[data-theme="glass"] nav.tabs button.on,:root[data-theme="glass"] .seg-in button.on{color:#FFFFFF}
+:root[data-theme="glass"] .seg-in{position:relative;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:999px;padding:4px;
+  box-shadow:inset 0 1px 3px rgba(0,0,0,.35)}
+:root[data-theme="glass"] .seg-in button{border-radius:999px}
 :root[data-theme="glass"] .fchip{border-radius:999px}
+:root[data-theme="glass"] .fchip.on{color:#fff;border-color:transparent}
 :root[data-theme="glass"] .fchip.on .sw{background:var(--c,#C9F25C)}
+:root[data-theme="glass"] .iconbtn{background:linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.05));
+  box-shadow:inset 0 1px 1px rgba(255,255,255,.5),inset 0 -1px 1px rgba(255,255,255,.12),0 6px 16px rgba(0,0,0,.35);border-color:rgba(255,255,255,.18);
+  backdrop-filter:blur(12px) saturate(180%);-webkit-backdrop-filter:blur(12px) saturate(180%)}
 /* capsule bars: grey, with the latest month in lime */
 :root[data-theme="glass"] .bars .stackbar{border-radius:999px;max-width:34px;background:linear-gradient(180deg,rgba(255,255,255,.36),rgba(255,255,255,.14));box-shadow:inset 0 1px 0 rgba(255,255,255,.3)}
 :root[data-theme="glass"] .bars .stackbar i{background:transparent !important}
@@ -266,7 +297,7 @@ nav.tabs button.on{color:var(--accent)}
 /* floating pill menu on phones */
 @media (max-width:899px){
   :root[data-theme="glass"] nav.tabs{left:14px;right:14px;bottom:calc(var(--safeb) + 10px);border-radius:999px;border:1px solid rgba(255,255,255,.1);
-    padding:0 6px;background:rgba(30,33,38,.66);backdrop-filter:blur(24px) saturate(150%);-webkit-backdrop-filter:blur(24px) saturate(150%);box-shadow:0 12px 34px rgba(0,0,0,.4)}
+    padding:0 6px;background:linear-gradient(180deg,rgba(40,44,50,.86),rgba(22,25,30,.9));backdrop-filter:blur(30px) saturate(170%);-webkit-backdrop-filter:blur(30px) saturate(170%);box-shadow:inset 0 1px 1px rgba(255,255,255,.28),inset 0 -1px 1px rgba(255,255,255,.06),0 16px 40px rgba(0,0,0,.5)}
 
   :root[data-theme="glass"] nav.tabs button{border-radius:999px;margin:5px 0;height:52px;transition:background .25s,color .25s}
   :root[data-theme="glass"] nav.tabs button.on{color:#F2F4F6}
@@ -300,6 +331,6 @@ html.is-locked #app,html.is-locked #layer{visibility:hidden}
 <div id="app"></div>
 <div id="layer"></div>
 
-<script src="app.js?v=12"></script>
+<script src="app.js?v=14"></script>
 </body>
 </html>

@@ -600,6 +600,7 @@ function render() {
     <nav class="tabs">${TABS.map(([id, label, svg]) => `<button class="${!S.vendor && S.tab === id ? 'on' : ''}" data-tab="${id}">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${svg}</svg>${label}</button>`).join('')}</nav>`;
   window.scrollTo(0, scrollY);
+  liquid($('nav.tabs'), 'nav');
 }
 function topActions() {
   if (S.vendor) return `<button class="btn sm sec" data-act="edit-vendor" data-name="${esc(S.vendor)}">Edit</button>`;
@@ -717,7 +718,7 @@ function paymentsView() {
   return `<div class="stack">
     <div class="tools">
       <div class="search">🔍<input type="search" id="paySearch" placeholder="Search item, vendor, notes, amount" value="${esc(S.filters.paySearch)}"></div>
-      <div class="chips"><button class="fchip ${!cat ? 'on' : ''}" data-paycat="">All</button>${usedCats.map(c => `<button class="fchip ${cat === c.name ? 'on' : ''}" style="--c:${catColor(c.name)}" data-paycat="${esc(c.name)}"><span class="sw" style="--c:${catColor(c.name)}"></span>${esc(c.name)}</button>`).join('')}</div>
+      <div class="chips"><button class="fchip ${!cat ? 'on lg' : ''}" data-paycat="">All</button>${usedCats.map(c => `<button class="fchip ${cat === c.name ? 'on lg' : ''}" style="--c:${catColor(c.name)}" data-paycat="${esc(c.name)}"><span class="sw" style="--c:${catColor(c.name)}"></span>${esc(c.name)}</button>`).join('')}</div>
       <div class="sortbar"><span class="num">${list.length} payment${list.length === 1 ? '' : 's'} · ${inr(sum)}</span>${sortControl('payments')}</div>
     </div>
     ${list.length ? groups : `<div class="list"><div class="empty">${d.payments.length ? 'No payments match.' : 'No payments yet. Tap Add Payment.'}</div></div>`}
@@ -807,12 +808,42 @@ function documentsView() {
   return `<div class="stack">
     <div class="tools">
       <div class="search">🔍<input type="search" id="docSearch" placeholder="Search documents" value="${esc(S.filters.docSearch)}"></div>
-      <div class="chips"><button class="fchip ${!kind ? 'on' : ''}" data-dockind="">All · ${all.length}</button>${KINDS.map(k => `<button class="fchip ${kind === k ? 'on' : ''}" style="--c:${KIND_COLOR[k]}" data-dockind="${k}">${k}s · ${all.filter(x => x.a.kind === k).length}</button>`).join('')}</div>
+      <div class="chips"><button class="fchip ${!kind ? 'on lg' : ''}" data-dockind="">All · ${all.length}</button>${KINDS.map(k => `<button class="fchip ${kind === k ? 'on lg' : ''}" style="--c:${KIND_COLOR[k]}" data-dockind="${k}">${k}s · ${all.filter(x => x.a.kind === k).length}</button>`).join('')}</div>
       <div class="sortbar"><span>${docs.length} document${docs.length === 1 ? '' : 's'}</span>${sortControl('documents')}</div>
     </div>
     <div class="list">${docs.map(docRow).join('') || `<div class="empty">${all.length ? 'No documents match.' : 'No documents yet. Open a payment and add its bill or receipt.'}</div>`}</div>
   </div>`;
 }
+
+/* ---------------- Liquid Glass selection lens ----------------
+ * One glass bubble per group slides (with a little spring) to the selected tab or switch. */
+const lensAt = {};
+function liquid(group, key) {
+  if (!group || document.documentElement.dataset.theme !== 'glass') return;
+  let b = group.querySelector(':scope > .lg-bubble');
+  if (!b) { b = document.createElement('span'); b.className = 'lg-bubble lg'; group.prepend(b); }
+  const on = group.querySelector(':scope > .on');
+  if (!on) { b.style.opacity = 0; return; }
+  const r = { x: on.offsetLeft, y: on.offsetTop, w: on.offsetWidth, h: on.offsetHeight }, prev = lensAt[key];
+  const put = q => { b.style.transform = `translate(${q.x}px,${q.y}px)`; b.style.width = q.w + 'px'; b.style.height = q.h + 'px'; b.style.opacity = 1; };
+  if (prev && (prev.x !== r.x || prev.y !== r.y)) {
+    b.style.transition = 'none'; put(prev); void b.offsetWidth; b.style.transition = '';
+    requestAnimationFrame(() => requestAnimationFrame(() => put(r)));
+  } else put(r);
+  lensAt[key] = r;
+}
+// squish the lens while a finger / mouse is pressed on a tab or switch
+document.addEventListener('pointerdown', e => {
+  const btn = e.target.closest('nav.tabs button, .seg-in button'); if (!btn) return;
+  const b = btn.parentElement.querySelector(':scope > .lg-bubble'); if (!b) return;
+  b.classList.add('press'); const up = () => { b.classList.remove('press'); removeEventListener('pointerup', up); removeEventListener('pointercancel', up); };
+  addEventListener('pointerup', up); addEventListener('pointercancel', up);
+});
+// segment switches inside forms toggle .on themselves — follow them
+document.addEventListener('click', e => {
+  const seg = e.target.closest('.seg-in'); if (seg) requestAnimationFrame(() => liquid(seg, seg.id || 'seg'));
+}, true);
+addEventListener('resize', () => { liquid($('nav.tabs'), 'nav'); document.querySelectorAll('.seg-in').forEach(g => liquid(g, g.id || 'seg')); });
 
 /* ---------------- sheets (forms) ---------------- */
 let sheetCleanup = null;
@@ -823,6 +854,7 @@ function openSheet(title, bodyHTML, { saveLabel = 'Save', onSave, onCancel, noSa
     <div class="sheet-h"><button data-sheet="cancel">${noSave ? '' : 'Cancel'}</button><h3>${esc(title)}</h3><button class="save" data-sheet="save">${noSave ? 'Done' : esc(saveLabel)}</button></div>
     <div class="sheet-b" id="sheetBody">${bodyHTML}</div></div></div>`;
   document.body.style.overflow = 'hidden';
+  requestAnimationFrame(() => document.querySelectorAll('#scrim .seg-in').forEach(g => { delete lensAt[g.id || 'seg']; liquid(g, g.id || 'seg'); }));
   const done = async (save) => {
     if (save && onSave) { const btn = $('[data-sheet="save"]'); btn.disabled = true; const ok = await onSave(); btn.disabled = false; if (ok === false) return; }
     else if (!save && onCancel) onCancel();
@@ -1084,6 +1116,7 @@ function accountSheet() {
 function setTheme(v) {
   ls.set('ra.theme', v);
   if (v === 'auto') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = v;
+  render(); document.querySelectorAll('.seg-in').forEach(g => liquid(g, g.id || 'seg'));
 }
 
 /* ---------------- document viewer ---------------- */
