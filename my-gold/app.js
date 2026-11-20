@@ -23,7 +23,7 @@ const CFG = {
   graph: 'https://graph.microsoft.com/v1.0',
   dataFile: 'my-gold.json',
   pointer: 'Apps/My Gold/location.json',
-  version: '1.0.7',
+  version: '1.0.9',
 };
 const CANON = 'https://dijango999.github.io/reno-app/my-gold/';
 const ON_SITE = location.hostname === 'dijango999.github.io';
@@ -547,9 +547,9 @@ function hijriLabel(dateStr) {
   try { return new Intl.DateTimeFormat('en-u-ca-islamic-umalqura', { day: 'numeric', month: 'long', year: 'numeric' }).format(parseDay(dateStr)); }
   catch { return ''; }
 }
-/** Next 1 Ramadan on or after today (Umm al-Qura calendar). */
+/** Next 20 Ramadan on or after today (Umm al-Qura calendar) — the family's yearly zakat day. */
 function nextRamadan(from = todayStr()) {
-  for (let i = 0; i < 400; i++) { const d = addDays(from, i), h = hijriParts(d); if (h && h.m === 9 && h.d === 1) return d; }
+  for (let i = 0; i < 400; i++) { const d = addDays(from, i), h = hijriParts(d); if (h && h.m === 9 && h.d === 20) return d; }
   return addDays(from, 354);
 }
 const zakatDate = () => { const s = S.data?.settings?.zakatDate; return s && s >= todayStr() ? s : nextRamadan(); };
@@ -779,7 +779,7 @@ function zakatView() {
       <div class="small muted" style="margin-top:8px">${s.zakatMethod === 'hanafi' ? 'All gold, including jewellery worn, is counted.' : 'Coins, bars and investment jewellery are counted. Jewellery worn for personal use is exempt.'} You can override any piece when editing it.</div>
       <div class="field"><span>Count gold</span><div class="seg"><button data-zc="0" class="${!combine ? 'on' : ''}">Per person</button><button data-zc="1" class="${combine ? 'on' : ''}">Family together</button></div>
         <span class="hint">${combine ? `Family zakatable gold: ${grams(fam.pure, 2)} pure — ${fam.above ? 'above' : 'below'} the ${NISAB_G} g nisab.` : 'Zakat is each owner’s duty, so each person is checked against nisab on their own.'}</span></div>
-      <div class="field"><span>Zakat date</span><input type="date" id="zdate" value="${esc(s.zakatDate || '')}"><span class="hint">Leave empty to use 1 Ramadan (${shortDate(nextRamadan())}).</span></div>
+      <div class="field"><span>Zakat date</span><input type="date" id="zdate" value="${esc(s.zakatDate || '')}"><span class="hint">Every year on 20 Ramadan — next ${shortDate(nextRamadan())}. Set a date here only to change this year's day; it goes back to 20 Ramadan afterwards.</span></div>
     </div>
     ${per.map(({ o, z }) => `<div class="card">
       <div class="ph" style="margin-bottom:12px"><span class="av" style="--c:${o.color}">${esc(initials(o.name))}</span><span style="font-weight:700;font-size:16px;flex:1">${esc(o.name)}</span>
@@ -928,12 +928,13 @@ function openForm(id, presetOwner) {
     purchaseDate: todayStr(), pricePaid: '', currency: cur(), billRate: '', making: '', vat: '', shop: '', invoiceNo: '',
     purpose: 'personal', zakat: 'auto', notes: '', photos: [], docs: [], status: 'held',
   };
-  draft._newPhotos = []; draft._newDocs = []; draft._isNew = !it;
+  draft._newPhotos = []; draft._newDocs = []; draft._isNew = !it; scanState = { busy: false, msg: '', result: null, file: null };
   openSheet(it ? 'Edit' : 'Add gold', formHtml(), { right: `<button class="linkbtn" data-a="save">Save</button>` });
 }
 function formHtml() {
   const d = draft, karatOther = !KARATS.some(k => k.k === +d.karat);
   return `<form id="gform" onsubmit="return false">
+    <div class="scan" id="scanBox">${scanBoxHtml()}</div>
     <div class="field"><span>Whose gold?</span><div class="pills">${owners().map(o => `<button type="button" data-fo2="${o.id}" class="${d.ownerId === o.id ? 'on' : ''}">${esc(o.name)}</button>`).join('')}</div></div>
     <div class="field"><span>Type</span><div class="pills">${Object.entries(TYPES).map(([k, v]) => `<button type="button" data-ty="${k}" class="${d.type === k ? 'on' : ''}">${v.icon} ${v.label}</button>`).join('')}</div></div>
     <div class="field"><span>Name</span><input name="title" value="${esc(d.title)}" placeholder="${d.type === 'coin' ? 'e.g. 10 g Federal Bank coin' : d.type === 'bar' ? 'e.g. 1 tola biscuit' : 'e.g. Wedding necklace'}" autocomplete="off"></div>
@@ -970,6 +971,69 @@ function formHtml() {
     <button type="button" class="btn" data-a="save" style="margin-top:18px">Save</button>
   </form>`;
 }
+/* ---- fill the form from a bill ---- */
+let scanState = { busy: false, msg: '', result: null, file: null };
+function scanBoxHtml() {
+  const s = scanState;
+  if (s.busy) return `<div class="scanrow"><span class="spin" style="width:18px;height:18px"></span><span>${esc(s.msg || 'Reading bill…')}</span></div>`;
+  const pick = s.result?.lines?.length > 1 ? `<div class="small" style="margin-top:8px;font-weight:700">This bill has ${s.result.lines.length} items — which one is this?</div>
+    <div class="pills" style="margin-top:6px">${s.result.lines.map((l, i) => `<button type="button" data-pick="${i}">${esc(l.title || 'Item ' + (i + 1))} · ${l.karat || ''}K · ${trimZ(l.gross.toFixed(3))} g</button>`).join('')}</div>` : '';
+  return `<div class="scanrow"><span style="font-size:22px">🧾</span><span style="flex:1"><b>Fill from bill</b><br><span class="small muted">${esc(s.msg || 'Scan or upload the bill — details are filled in for you to check.')}</span></span></div>${pick}
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <label class="btn sec" style="flex:1;padding:10px">📷 Scan bill<input type="file" accept="image/*" capture="environment" hidden data-scan="1"></label>
+      <label class="btn sec" style="flex:1;padding:10px">📎 Photo / PDF<input type="file" accept="image/*,application/pdf" hidden data-scan="1"></label></div>`;
+}
+function paintScan() { const b = $('#scanBox', sheetEl); if (b) b.innerHTML = scanBoxHtml(); }
+async function scanBill(file) {
+  if (scanState.busy) return;
+  readForm();
+  scanState = { busy: true, msg: 'Preparing the bill reader… (first time takes a few seconds)', result: null, file };
+  paintScan();
+  // keep the bill itself with this piece
+  const same = f => f.name === file.name && f.size === file.size && f.lastModified === file.lastModified;
+  if (!draft._newDocs.some(d => same(d.file))) {
+    const entry = { id: uuid(), file }; if (/^image\//.test(file.type)) { try { entry.preview = await makeThumb(file); } catch {} }
+    draft._newDocs.push(entry);
+  }
+  try {
+    const r = await BILL.read(file, p => { scanState.msg = `Reading bill… ${p}%`; paintScan(); });
+    scanState = { busy: false, result: r, file, msg: '' };
+    if (!r.lines.length && !r.date && !r.invoiceNo) { scanState.msg = 'Couldn’t read details from this bill. It is attached — please type the details.'; redrawForm(); return; }
+    applyBill(r, r.lines.length === 1 ? 0 : -1);
+  } catch (e) { scanState = { busy: false, msg: e.message || 'Could not read the bill.', result: null, file }; paintScan(); }
+}
+function applyBill(r, idx) {
+  const d = draft, L = idx >= 0 ? r.lines[idx] : null, found = [];
+  if (r.shop) { d.shop = r.shop; found.push('shop'); }
+  if (r.invoiceNo) { d.invoiceNo = r.invoiceNo; found.push('bill no.'); }
+  if (r.date) { d.purchaseDate = r.date; found.push('date'); }
+  if (r.currency) d.currency = r.currency;
+  if (L) {
+    d.type = L.type; found.push(TYPES[L.type].label.toLowerCase());
+    if (L.karat) { if (KARATS.some(k => k.k === L.karat)) d.karat = L.karat; else { d.karat = 0; d.purity = trimZ((L.karat / 24).toFixed(3)); } found.push(L.karat + 'K'); }
+    if (L.title) d.title = L.title;
+    d.weight = String(L.gross); found.push('weight');
+    if (L.type === 'jewellery' && L.stones) { d.stoneWeight = String(L.stones); found.push('stones'); }
+    const one = r.lines.length === 1;
+    const paid = one ? (r.exchange.length ? (r.totals.sale ?? L.total) : (r.totals.net ?? r.totals.sale ?? L.total)) : L.total;
+    if (paid > 0) { d.pricePaid = String(paid); found.push('price'); }
+    const vat = L.tax || (one ? r.totals.tax : 0); if (vat > 0) d.vat = String(vat);
+    if (r.making && one) d.making = String(r.making);
+    if (L.karat && r.rates[L.karat]) { d.billRate = String(r.rates[L.karat]); found.push('rate'); }
+    if (L.type !== 'jewellery') d.purpose = 'investment';
+  }
+  if (r.exchange.length) {
+    const cur = r.currency || d.currency;
+    const note = 'Old gold given in exchange: ' + r.exchange.map(e => `${trimZ(e.net.toFixed(3))} g ${e.karat ? e.karat + 'K ' : ''}${e.title.toLowerCase()} (${money(Math.abs(e.total), cur, 2)})`).join(', ')
+      + (r.totals.net != null ? `. Paid after exchange: ${money(r.totals.net, cur, 2)}.` : '.');
+    if (!String(d.notes || '').includes('Old gold given in exchange')) d.notes = [d.notes, note].filter(Boolean).join('\n');
+    found.push('old-gold exchange');
+  }
+  scanState.msg = (L ? '✓ Filled ' : '✓ Found ') + found.join(', ') + ' — please check before saving.';
+  if (L) scanState.result = { ...r, lines: [] };   // choice made
+  const sb = $('.sb', sheetEl), y = sb?.scrollTop; if (sb) { sb.innerHTML = formHtml(); sb.scrollTop = y; }
+}
+
 function readForm() {
   const f = $('#gform', sheetEl); if (!f) return;
   for (const el of f.elements) if (el.name) draft[el.name] = el.value;
@@ -1138,6 +1202,7 @@ async function onClick(e) {
   const ka = t.closest('[data-ka]'); if (ka) { readForm(); draft.karat = +ka.dataset.ka; redrawForm(); return; }
   const pu = t.closest('[data-pu]'); if (pu) { readForm(); draft.purpose = pu.dataset.pu; redrawForm(); return; }
   const rmp = t.closest('[data-rmp]'); if (rmp) { readForm(); draft.photos = draft.photos.filter(p => p.id !== rmp.dataset.rmp); draft._newPhotos = draft._newPhotos.filter(p => p.id !== rmp.dataset.rmp); redrawForm(); return; }
+  const pk = t.closest('[data-pick]'); if (pk && scanState.result) { readForm(); applyBill(scanState.result, +pk.dataset.pick); return; }
   const rmd = t.closest('[data-rmd]'); if (rmd) { readForm(); draft._newDocs = draft._newDocs.filter(p => p.id !== rmd.dataset.rmd); redrawForm(); return; }
   const oc = t.closest('[data-oc]'); if (oc) { sheetEl.dataset.color = oc.dataset.oc; sheetEl.querySelectorAll('[data-oc]').forEach(b => { b.classList.toggle('on', b === oc); b.style.borderWidth = b === oc ? '3px' : '1px'; }); return; }
   // settings toggles
@@ -1256,6 +1321,7 @@ async function onChange(e) {
   }
   if (t.id === 'prem') { const v = num(t.value); mutate(d => { d.settings.premium[d.settings.currency] = isFinite(v) ? v : 0; }); return; }
   if (t.name === 'karat' || t.name === 'type') return;
+  if (t.matches('[data-scan]') && t.files?.[0]) { scanBill(t.files[0]); return; }
   if (t.matches('[data-fp],[data-fd]') && t.files?.length) {
     readForm();
     for (const file of t.files) {
