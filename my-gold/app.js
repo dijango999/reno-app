@@ -176,6 +176,7 @@ async function g(path, opts = {}) {
     return r;
   }
 }
+const DEFAULT_PATH = 'Documents/02 ACCOUNTS/My Gold app';
 let LOC = lsJSON('mg.loc');
 const encRel = rel => rel.split('/').filter(Boolean).map(encodeURIComponent).join('/');
 const item = rel => { if (!LOC) throw new Error('Choose where to keep your data first.'); return `/drives/${LOC.driveId}/items/${LOC.id}:/${encRel(rel)}`; };
@@ -208,6 +209,11 @@ async function resolveLocation() {
     catch (e) { if (e.status !== 404) throw e; }
   }
   if (LOC) { await writePointer(LOC).catch(() => {}); return true; }
+  try {   // the family's chosen folder: Documents › 02 ACCOUNTS › My Gold app
+    const f = await (await g(`/me/drive/root:/${encRel(DEFAULT_PATH)}?$select=id,name,parentReference`)).json();
+    const l = { driveId: f.parentReference.driveId, id: f.id, path: DEFAULT_PATH };
+    saveLoc(l); await writePointer(l).catch(() => {}); return true;
+  } catch (e) { if (e.status !== 404) throw e; }
   return false;
 }
 async function loadRemote() {
