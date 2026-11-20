@@ -22,7 +22,7 @@
   --hdr:rgba(247,243,234,.86); --navbg:rgba(255,255,255,.92); --press:#FBF8F1; --fill:#EFE8DA;
   --hero1:#2A2114; --hero2:#120E08; --heroInk:#FFF6DF;
   --r:18px; --tabh:62px; --safeb:env(safe-area-inset-bottom,0px); --safet:env(safe-area-inset-top,0px);
-  --serif:"New York","Iowan Old Style",ui-serif,Georgia,"Times New Roman",serif;
+  --serif:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI Variable Display","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   color-scheme:light;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
@@ -49,7 +49,7 @@ h1,h2,h3{margin:0;letter-spacing:-.01em}
 /* Shell */
 header.top{position:sticky;top:0;z-index:20;background:var(--hdr);backdrop-filter:saturate(1.6) blur(14px);-webkit-backdrop-filter:saturate(1.6) blur(14px);padding:calc(var(--safet) + 10px) 16px 8px}
 .topbar{display:flex;align-items:center;gap:10px;max-width:880px;margin:0 auto}
-.topbar h1{font-family:var(--serif);font-size:30px;font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.topbar h1{font-family:var(--serif);font-size:30px;font-weight:700;letter-spacing:-.025em;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sync{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);max-width:880px;margin:2px auto 0}
 .dot{width:7px;height:7px;border-radius:50%;background:var(--good);flex:none}
 .dot.busy{background:var(--gold);animation:pulse 1s infinite}
@@ -83,7 +83,7 @@ nav.tabs button.on{color:var(--gold)}
 .hero{border-radius:24px;padding:20px;margin-top:8px;color:var(--heroInk);background:radial-gradient(120% 140% at 100% 0%,#5A4318 0%,transparent 55%),linear-gradient(160deg,var(--hero1),var(--hero2));position:relative;overflow:hidden;border:1px solid rgba(226,184,74,.25)}
 .hero::after{content:"";position:absolute;inset:0;background:linear-gradient(115deg,transparent 30%,rgba(255,230,160,.08) 45%,transparent 60%);pointer-events:none}
 .hero .lbl{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#D9C38F;font-weight:700}
-.hero .big{font-family:var(--serif);font-size:40px;font-weight:700;margin:6px 0 2px;letter-spacing:-.01em;background:linear-gradient(180deg,#FFF1C9,#E2B84A);-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero .big{font-family:var(--serif);font-size:40px;font-weight:700;margin:6px 0 2px;letter-spacing:-.03em;font-variant-numeric:tabular-nums;background:linear-gradient(180deg,#FFF1C9,#E2B84A);-webkit-background-clip:text;background-clip:text;color:transparent}
 .hero .sub{color:#E9DCB9;font-size:14px}
 .hero .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:16px}
 .hero .stat{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:10px}
@@ -106,7 +106,7 @@ nav.tabs button.on{color:var(--gold)}
 .ph{display:flex;align-items:center;gap:10px}
 .av{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;font-weight:800;color:#fff;background:var(--c);flex:none;font-size:15px}
 .person .name{font-weight:700;font-size:16px}
-.person .val{font-family:var(--serif);font-size:24px;font-weight:700;margin-top:10px}
+.person .val{font-family:var(--serif);font-size:24px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums;margin-top:10px}
 .person .meta{display:flex;gap:10px;color:var(--muted);font-size:13px;margin-top:2px;flex-wrap:wrap}
 
 .bar{height:10px;border-radius:99px;background:var(--track);overflow:hidden;display:flex}
@@ -234,7 +234,7 @@ html.is-locked #app,html.is-locked .sheet,html.is-locked .scrim{visibility:hidde
 </head>
 <body>
 <div id="app"><div class="welcome"><img src="icons/icon-512.png" alt=""><h1>My Gold</h1><p>Loading…</p></div></div>
-<script src="bill.js?v=1.0.11"></script>
-<script src="app.js?v=1.0.11"></script>
+<script src="bill.js?v=1.0.12"></script>
+<script src="app.js?v=1.0.12"></script>
 </body>
 </html>

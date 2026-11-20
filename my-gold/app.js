@@ -23,7 +23,7 @@ const CFG = {
   graph: 'https://graph.microsoft.com/v1.0',
   dataFile: 'my-gold.json',
   pointer: 'Apps/My Gold/location.json',
-  version: '1.0.11',
+  version: '1.0.12',
 };
 const CANON = 'https://dijango999.github.io/reno-app/my-gold/';
 const ON_SITE = location.hostname === 'dijango999.github.io';
@@ -86,6 +86,15 @@ function moneyK(n, c = cur()) {
   return money(n, c, 0);
 }
 const pct = n => (n > 0 ? '+' : '') + (isFinite(n) ? n.toFixed(1) : '0') + '%';
+const _tu = new Map();
+/** Inline photo data → a short blob: URL (cached) so re-drawing the screen doesn't re-parse megabytes of text. */
+function tu(d) {
+  if (!d || !d.startsWith('data:')) return d || '';
+  let u = _tu.get(d); if (u) return u;
+  try { const [h, b] = d.split(','), bin = atob(b), a = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
+    u = URL.createObjectURL(new Blob([a], { type: /:(.*?);/.exec(h)?.[1] || 'image/jpeg' })); } catch { u = d; }
+  _tu.set(d, u); return u;
+}
 const initials = n => String(n).split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
 const isImageName = n => /\.(jpe?g|png|gif|webp|heic|heif|bmp)$/i.test(n || '');
 
@@ -411,11 +420,9 @@ async function fetchJSON(url, ms = 9000) {
 }
 /** Gold price per troy ounce in USD, AED and INR for one day (fawazahmed0 currency-api, from Mar 2024). */
 async function xauOn(day) {
-  for (const u of [`https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@${day}/v1/currencies/xau.min.json`,
-                   `https://${day}.currency-api.pages.dev/v1/currencies/xau.min.json`]) {
-    try { const j = await fetchJSON(u, 7000); const x = j.xau; if (x?.usd) return { date: j.date, usd: x.usd, aed: x.aed || x.usd * AED_PER_USD, inr: x.inr || null, src: 'currency-api' }; } catch {}
-  }
-  return null;
+  const one = async u => { const j = await fetchJSON(u, 7000), x = j.xau; if (x?.usd) return { date: j.date, usd: x.usd, aed: x.aed || x.usd * AED_PER_USD, inr: x.inr || null, src: 'currency-api' }; throw 0; };
+  try { return await Promise.any([`https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@${day}/v1/currencies/xau.min.json`,
+                                 `https://${day}.currency-api.pages.dev/v1/currencies/xau.min.json`].map(one)); } catch { return null; }
 }
 let longHistory = null;
 async function usdHistoryOn(day) {          // freegoldapi.com — long USD history, used for dates before Mar 2024
@@ -536,21 +543,30 @@ function totals(list) {
 }
 
 /* ---------------- zakat ---------------- */
+let _hf = null; const _hmemo = new Map();
 function hijriParts(dateStr) {
+  if (_hmemo.has(dateStr)) return _hmemo.get(dateStr);
+  let r = null;
   try {
-    const f = new Intl.DateTimeFormat('en-u-ca-islamic-umalqura', { day: 'numeric', month: 'numeric', year: 'numeric' });
-    const p = Object.fromEntries(f.formatToParts(parseDay(dateStr)).map(x => [x.type, x.value]));
-    return { d: +p.day, m: +p.month, y: parseInt(p.year) };
-  } catch { return null; }
+    _hf ||= new Intl.DateTimeFormat('en-u-ca-islamic-umalqura', { day: 'numeric', month: 'numeric', year: 'numeric' });
+    const p = Object.fromEntries(_hf.formatToParts(parseDay(dateStr)).map(x => [x.type, x.value]));
+    r = { d: +p.day, m: +p.month, y: parseInt(p.year) };
+  } catch {}
+  if (_hmemo.size > 800) _hmemo.clear();
+  _hmemo.set(dateStr, r); return r;
 }
+let _hlf = null;
 function hijriLabel(dateStr) {
-  try { return new Intl.DateTimeFormat('en-u-ca-islamic-umalqura', { day: 'numeric', month: 'long', year: 'numeric' }).format(parseDay(dateStr)); }
+  try { _hlf ||= new Intl.DateTimeFormat('en-u-ca-islamic-umalqura', { day: 'numeric', month: 'long', year: 'numeric' }); return _hlf.format(parseDay(dateStr)); }
   catch { return ''; }
 }
 /** Next 20 Ramadan on or after today (Umm al-Qura calendar) — the family's yearly zakat day. */
+const _nr = new Map();
 function nextRamadan(from = todayStr()) {
-  for (let i = 0; i < 400; i++) { const d = addDays(from, i), h = hijriParts(d); if (h && h.m === 9 && h.d === 20) return d; }
-  return addDays(from, 354);
+  if (_nr.has(from)) return _nr.get(from);
+  let out = addDays(from, 354);
+  for (let i = 0; i < 400; i++) { const d = addDays(from, i), h = hijriParts(d); if (h && h.m === 9 && h.d === 20) { out = d; break; } }
+  _nr.set(from, out); return out;
 }
 const zakatDate = () => { const s = S.data?.settings?.zakatDate; return s && s >= todayStr() ? s : nextRamadan(); };
 /** Why a piece is (or is not) counted for zakat. */
@@ -593,8 +609,10 @@ const isDark = () => { const t = ls.get('mg.theme') || 'auto'; return t === 'dar
 matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => { if (S.phase === 'ready') render(); });
 const TABS = [['home', 'Home'], ['items', 'My Gold'], ['zakat', 'Zakat'], ['settings', 'Settings']];
 
-function render() {
-  const app = $('#app');
+let _rq = 0, _last = '';
+function render() { if (_rq) return; _rq = requestAnimationFrame(() => { _rq = 0; renderNow(); }); }
+function renderNow() {
+  const app = $('#app'); if (S.phase !== 'ready') _last = '';
   const sy = window.scrollY;
   if (S.phase === 'loading') { app.innerHTML = `<div class="welcome"><img src="icons/icon-512.png" alt=""><h1>My Gold</h1><p><span class="spin"></span></p></div>`; return; }
   if (S.phase === 'welcome' || S.phase === 'needsignin') { app.innerHTML = welcomeView(); return; }
@@ -602,7 +620,7 @@ function render() {
   if (S.phase === 'setup') { app.innerHTML = setupView(); return; }
   const title = { home: 'My Gold', items: 'Collection', zakat: 'Zakat', settings: 'Settings' }[S.tab];
   const body = S.tab === 'items' ? itemsView() : S.tab === 'zakat' ? zakatView() : S.tab === 'settings' ? settingsView() : homeView();
-  app.innerHTML = `
+  const html = `
     <header class="top"><div class="topbar"><h1>${title}</h1>
       <button class="iconbtn" data-a="theme-toggle" title="Light / dark">${isDark() ? '☀️' : '🌙'}</button>
       ${S.tab === 'home' ? `<button class="iconbtn" data-a="refresh" title="Refresh prices">${S.ratesBusy ? '<span class="spin" style="width:16px;height:16px"></span>' : '↻'}</button>` : ''}
@@ -610,7 +628,7 @@ function render() {
     <main>${body}</main>
     ${S.tab === 'settings' || S.tab === 'zakat' ? '' : `<button class="fab" data-a="add"><span style="font-size:19px;line-height:1">＋</span> Add gold</button>`}
     <nav class="tabs">${TABS.map(([k, l]) => `<button data-tab="${k}" class="${S.tab === k ? 'on' : ''}">${ICON[k]}<span>${l}</span></button>`).join('')}</nav>`;
-  window.scrollTo(0, sy);
+  if (html !== _last || !app.firstElementChild) { app.innerHTML = html; _last = html; window.scrollTo(0, sy); }
 }
 function paintRates() { const b = $('[data-a="refresh"]'); if (b) b.innerHTML = S.ratesBusy ? '<span class="spin" style="width:16px;height:16px"></span>' : '↻'; }
 
@@ -724,7 +742,7 @@ function itemRow(it) {
   const o = ownerById(it.ownerId), v = valueNow(it), cst = costIn(it), gain = v != null && cst ? v - cst : null;
   const ph = it.photos?.[0]?.thumb;
   return `<button class="row" data-a="open" data-id="${it.id}">
-    <span class="thumb" style="${ph ? `background-image:url('${ph}')` : ''}">${ph ? '' : TYPES[it.type]?.icon || '🪙'}</span>
+    <span class="thumb" style="${ph ? `background-image:url('${tu(ph)}')` : ''}">${ph ? '' : TYPES[it.type]?.icon || '🪙'}</span>
     <span class="main"><span class="t">${esc(it.title || TYPES[it.type]?.label)}</span>
       <span class="s"><span class="chip gold">${esc(karatLabel(it))}</span> ${grams(+it.weight, 3)} · ${esc(o?.name || '–')}${it.status !== 'held' ? ` · <b>${it.status === 'sold' ? 'Sold' : 'Gifted'}</b>` : ''}</span></span>
     <span class="r"><div class="a num">${it.status === 'held' ? money(v, cur(), 0) : money(convert(+it.soldPrice || 0, it.currency || cur(), cur()), cur(), 0)}</div>
@@ -875,9 +893,9 @@ function openItem(id) {
   const zr = zakatRule(it), cover = it.photos[0];
   const rateThen = it.buyRate ? (c === 'USD' ? it.buyRate.usd : c === 'AED' ? it.buyRate.aed : it.buyRate.inr) : null;
   openSheet(it.title || 'Gold', `
-    ${cover ? `<div class="photo-hero" data-a="photo" data-pid="${cover.id}" style="background-image:url('${cover.local || cover.thumb}')"></div>`
+    ${cover ? `<div class="photo-hero" data-a="photo" data-pid="${cover.id}" style="background-image:url('${tu(cover.local || cover.thumb)}')"></div>`
       : `<label class="photo-hero empty"><span style="font-size:40px">${TYPES[it.type]?.icon}</span><span class="small" style="font-weight:700;color:var(--goldInk)">📷 Add a photo</span><input type="file" accept="image/*" hidden data-up="photo" data-id="${it.id}"></label>`}
-    ${cover ? `<div class="gallery" style="margin-top:8px">${it.photos.slice(1).map(p => `<div class="g" data-a="photo" data-pid="${p.id}" style="background-image:url('${p.local || p.thumb}')"></div>`).join('')}
+    ${cover ? `<div class="gallery" style="margin-top:8px">${it.photos.slice(1).map(p => `<div class="g" data-a="photo" data-pid="${p.id}" style="background-image:url('${tu(p.local || p.thumb)}')"></div>`).join('')}
       <label class="g add">＋ Photo<input type="file" accept="image/*" hidden data-up="photo" data-id="${it.id}"></label></div>` : ''}
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
       <span class="chip" style="background:${o?.color};color:#fff">${esc(o?.name || '–')}</span>
@@ -909,7 +927,7 @@ function openItem(id) {
       ${it.status === 'sold' && +it.soldPrice ? `<dt>Sold for</dt><dd class="num">${money(+it.soldPrice, it.currency)}</dd>` : ''}
     </dl>${it.buyRate ? `<div class="small faint" style="margin-top:8px">Purchase-day price from ${esc(it.buyRate.src)} (${shortDate(it.buyRate.date)}).</div>` : ''}</div>
     <div class="card"><h3>Bills &amp; receipts</h3>
-      <div class="list" style="margin-top:0">${it.docs.map(d => `<button class="row" data-a="doc" data-did="${d.id}"><span class="thumb" style="width:42px;height:42px;font-size:18px;${d.thumb ? `background-image:url('${d.thumb}')` : ''}">${d.thumb ? '' : '📄'}</span><span class="main"><span class="t">${esc(d.kind)}</span><span class="s">${esc(d.name)}</span></span><span class="faint">›</span></button>`).join('') || '<div class="empty small">No bill added yet.</div>'}</div>
+      <div class="list" style="margin-top:0">${it.docs.map(d => `<button class="row" data-a="doc" data-did="${d.id}"><span class="thumb" style="width:42px;height:42px;font-size:18px;${d.thumb ? `background-image:url('${tu(d.thumb)}')` : ''}">${d.thumb ? '' : '📄'}</span><span class="main"><span class="t">${esc(d.kind)}</span><span class="s">${esc(d.name)}</span></span><span class="faint">›</span></button>`).join('') || '<div class="empty small">No bill added yet.</div>'}</div>
       <div style="display:flex;gap:8px;margin-top:10px">
         <label class="btn sec" style="flex:1">📷 Photo of bill<input type="file" accept="image/*" capture="environment" hidden data-up="bill" data-id="${it.id}"></label>
         <label class="btn sec" style="flex:1">📎 File / PDF<input type="file" accept="image/*,application/pdf" hidden data-up="bill" data-id="${it.id}"></label>
@@ -965,7 +983,7 @@ function formHtml() {
     ${d.type === 'jewellery' ? `<div class="field"><span>Kept for</span><div class="pills"><button type="button" data-pu="personal" class="${d.purpose !== 'investment' ? 'on' : ''}">Wearing</button><button type="button" data-pu="investment" class="${d.purpose === 'investment' ? 'on' : ''}">Investment</button></div></div>` : ''}
     <div class="field"><span>Zakat</span><select name="zakat"><option value="auto" ${d.zakat === 'auto' ? 'selected' : ''}>Automatic (${zakatRule({ ...d, zakat: 'auto' }).due ? 'zakatable' : 'exempt'})</option><option value="yes" ${d.zakat === 'yes' ? 'selected' : ''}>Always count for zakat</option><option value="no" ${d.zakat === 'no' ? 'selected' : ''}>Never count for zakat</option></select></div>
     <div class="field"><span>Photos</span><div class="gallery">
-      ${[...d.photos, ...d._newPhotos].map(p => `<div class="g" style="background-image:url('${p.thumb || p.preview}')"><button type="button" class="x" data-rmp="${p.id}">✕</button></div>`).join('')}
+      ${[...d.photos, ...d._newPhotos].map(p => `<div class="g" style="background-image:url('${tu(p.thumb || p.preview)}')"><button type="button" class="x" data-rmp="${p.id}">✕</button></div>`).join('')}
       <label class="g add">📷<br>Camera<input type="file" accept="image/*" capture="environment" hidden data-fp="1"></label>
       <label class="g add">🖼️<br>Library<input type="file" accept="image/*" multiple hidden data-fp="1"></label></div></div>
     ${d._isNew ? `<div class="field"><span>Bill / receipt</span><div class="gallery">
