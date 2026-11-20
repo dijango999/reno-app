@@ -23,7 +23,7 @@ const CFG = {
   graph: 'https://graph.microsoft.com/v1.0',
   dataFile: 'my-gold.json',
   pointer: 'Apps/My Gold/location.json',
-  version: '1.0',
+  version: '1.0.7',
 };
 const CANON = 'https://dijango999.github.io/reno-app/my-gold/';
 const ON_SITE = location.hostname === 'dijango999.github.io';
@@ -636,7 +636,7 @@ function folderView() {
     <div id="fb"></div></main>`;
 }
 function setupView() {
-  const names = (S.setupNames ||= ['Me', 'Wife', 'Daughter']);
+  const names = (S.setupNames ||= lsJSON('mg.setupNames') || ['Me', 'Wife', 'Daughter']);
   return `<header class="top"><div class="topbar"><h1>Your family</h1></div></header>
     <main>
       <div class="card"><h3>Who owns gold?</h3>
@@ -648,6 +648,7 @@ function setupView() {
         <div class="pills" id="setupCur">${Object.keys(CURS).map(c => `<button data-cur="${c}" class="${(S.setupCur || 'AED') === c ? 'on' : ''}">${c}</button>`).join('')}</div>
       </div>
       <button class="btn" data-a="setup-done" style="margin-top:18px">Start</button>
+      <div class="small faint" style="text-align:center;margin-top:12px">My Gold ${CFG.version}</div>
     </main>`;
 }
 
@@ -1229,7 +1230,7 @@ async function onClick(e) {
     case 'setup-done': await finishSetup(a); break;
   }
 }
-function collectSetup() { document.querySelectorAll('[data-setup]').forEach(i => { S.setupNames[+i.dataset.setup] = i.value; }); }
+function collectSetup() { document.querySelectorAll('[data-setup]').forEach(i => { S.setupNames[+i.dataset.setup] = i.value; }); ls.set('mg.setupNames', JSON.stringify(S.setupNames)); }
 async function finishSetup(btn) {
   collectSetup();
   const names = S.setupNames.map(s => s.trim()).filter(Boolean); if (!names.length) return toast('Add at least one name.');
@@ -1277,7 +1278,7 @@ async function onChange(e) {
 }
 let qTimer;
 function onInput(e) {
-  if (e.target.dataset?.setup != null) { S.setupNames[+e.target.dataset.setup] = e.target.value; return; }
+  if (e.target.dataset?.setup != null) { S.setupNames[+e.target.dataset.setup] = e.target.value; ls.set('mg.setupNames', JSON.stringify(S.setupNames)); return; }
   if (e.target.id === 'q') { clearTimeout(qTimer); const v = e.target.value; qTimer = setTimeout(() => { S.f.q = v; const pos = e.target.selectionStart; render(); const q = $('#q'); if (q) { q.focus(); q.setSelectionRange(pos, pos); } }, 200); }
 }
 document.addEventListener('click', e => { if (!e.target.closest('.sheet')) onClick(e); });
@@ -1410,11 +1411,27 @@ async function lockSettingsSheet() {
   $('#lockOff', sheetEl)?.addEventListener('click', () => { if (confirm('Turn off the app lock on this device?')) { setLock(null); toast('App lock is off'); closeSheet(); render(); } });
 }
 
+/* ---- updates: the installed iPhone app can keep an old copy in memory, so check on open and on return ---- */
+async function checkForUpdate() {
+  if (location.protocol !== 'https:') return;
+  try {
+    const v = (await fetchJSON('version.json?t=' + Date.now(), 6000)).version;
+    if (v && v !== CFG.version && ls.get('mg.updTried') !== v) {
+      ls.set('mg.updTried', v);
+      try { const rs = await navigator.serviceWorker?.getRegistrations?.(); for (const r of rs || []) await r.update(); } catch {}
+      try { for (const k of await caches.keys()) await caches.delete(k); } catch {}
+      location.reload();
+    }
+  } catch {}
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkForUpdate(); });
+
 /* ---------------- start ---------------- */
 async function boot() {
   applyTheme();
   if (getLock() && (tokens || S.demo)) showLock();
-  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(() => {});
+  checkForUpdate();
   if (S.demo) {
     const d = lsJSON('mg.demoData'); if (d) { applyData(normalize(d), null); refreshRates(); return; }
     S.demo = false; ls.del('mg.demo');

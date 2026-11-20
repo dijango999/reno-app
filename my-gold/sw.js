@@ -1,6 +1,6 @@
 // Keeps the app itself available offline. Your data always comes from OneDrive.
-const CACHE = 'my-gold-v6';
-const SHELL = ['./', 'index.html', 'app.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
+const CACHE = 'my-gold-v7';
+const SHELL = ['./', 'index.html', 'app.js?v=1.0.7', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL))); self.skipWaiting(); });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))));
@@ -10,7 +10,8 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const u = new URL(e.request.url);
   if (e.request.method !== 'GET' || u.origin !== location.origin) return;
-  const key = u.origin + u.pathname;
+  const key = u.origin + u.pathname + (u.pathname.endsWith('.js') ? u.search : '');
+  if (u.pathname.endsWith('version.json')) return;   // always straight from the network
   e.respondWith(fetch(key, { cache: 'no-cache' }).then(r => {
     if (r.ok) { const copy = r.clone(); caches.open(CACHE).then(c => c.put(key, copy)); }
     return r;
