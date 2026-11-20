@@ -23,7 +23,7 @@ const CFG = {
   graph: 'https://graph.microsoft.com/v1.0',
   dataFile: 'my-gold.json',
   pointer: 'Apps/My Gold/location.json',
-  version: '1.0.13',
+  version: '1.0.14',
 };
 const CANON = 'https://dijango999.github.io/reno-app/my-gold/';
 const ON_SITE = location.hostname === 'dijango999.github.io';
@@ -270,12 +270,22 @@ function mutate(change) {
     if (!navigator.onLine) throw new Error('You are offline. Connect to the internet to save changes.');
     setSync('busy', 'Saving…');
     for (let attempt = 0; attempt < 5; attempt++) {
-      const remote = await loadRemote();
-      if (!remote) throw new Error('Your data file is missing in OneDrive. Nothing was saved.');
-      await dailyBackup(remote.text);
-      const d = remote.data; change(d); d.savedAt = isoNow();
-      try { const etag = await putData(d, remote.etag); applyData(d, etag); setSync('ok'); return true; }
-      catch (e) { if (e.status === 412 || e.status === 409) continue; throw e; }
+      let d, etag;
+      if (attempt === 0 && S.base && S.etag) { d = JSON.parse(JSON.stringify(S.base)); etag = S.etag; }   // quick path: one request
+      else {
+        const remote = await loadRemote();
+        if (!remote) throw new Error('Your data file is missing in OneDrive. Nothing was saved.');
+        await dailyBackup(remote.text); d = remote.data; etag = remote.etag;
+      }
+      if (attempt === 0 && ls.get('mg.backup') !== todayStr()) { try { await dailyBackup(stableJSON(d)); } catch {} }
+      change(d); d.savedAt = isoNow();
+      try {
+        const e2 = await putData(d, etag);
+        if (S.fast > 0) { S.base = JSON.parse(JSON.stringify(d)); S.etag = e2; ls.set('mg.etag', e2 || ''); ls.set('mg.cache', JSON.stringify(d)); }
+        else applyData(d, e2);
+        setSync('ok'); return true;
+      }
+      catch (e) { if (e.status === 412 || e.status === 409) { S.base = null; continue; } throw e; }
     }
     throw new Error('OneDrive is busy. Please try again.');
   };
@@ -289,11 +299,12 @@ function mutateFast(change) {
   change(S.data); S.data.savedAt = isoNow();
   try { ls.set('mg.cache', JSON.stringify(S.data)); } catch {}
   render();
-  mutate(change).then(ok => { if (!ok) pull(true); });
+  S.fast = (S.fast || 0) + 1;
+  mutate(change).then(ok => { S.fast--; if (!ok) pull(true); else if (S.fast === 0) { S.data = JSON.parse(JSON.stringify(S.base || S.data)); render(); } });
   return Promise.resolve(true);
 }
 function applyData(d, etag) {
-  S.data = d; S.etag = etag;
+  S.data = d; S.etag = etag; S.base = S.demo ? null : JSON.parse(JSON.stringify(d));
   if (!S.demo) { ls.set('mg.cache', JSON.stringify(d)); ls.set('mg.etag', etag || ''); }
   applyTheme();
   if (S.phase !== 'ready') S.phase = 'ready';
