@@ -23,7 +23,7 @@ const CFG = {
   graph: 'https://graph.microsoft.com/v1.0',
   dataFile: 'my-gold.json',
   pointer: 'Apps/My Gold/location.json',
-  version: '1.0.10',
+  version: '1.0.11',
 };
 const CANON = 'https://dijango999.github.io/reno-app/my-gold/';
 const ON_SITE = location.hostname === 'dijango999.github.io';
@@ -824,11 +824,11 @@ function settingsView() {
       <div class="seg">${[['light', '☀️ Light'], ['dark', '🌙 Dark'], ['auto', 'Auto']].map(([k, l]) => `<button data-th="${k}" class="${(ls.get('mg.theme') || 'auto') === k ? 'on' : ''}">${l}</button>`).join('')}</div>
       <div class="small faint" style="margin-top:8px">Auto follows your iPhone or Mac light/dark setting. Tap ☀️/🌙 at the top of any screen to switch quickly.</div>
     </div>
-    <div class="card"><h3>AI bill reading</h3>
-      <div class="small muted">Optional. With an Anthropic API key, a photographed bill is read by Claude so no weight, rate or amount is missed. The key stays on this device only; a bill costs about a cent.</div>
-      <div class="field"><span>API key ${ls.get('mg.aiKey') ? '· ✓ saved' : ''}</span><input id="aiKey" type="password" autocomplete="off" autocapitalize="off" placeholder="${ls.get('mg.aiKey') ? '•••••••• (saved)' : 'sk-ant-…'}"></div>
+    <div class="card"><h3>AI bill reading · free</h3>
+      <div class="small muted">Optional and free. A free Google Gemini key lets AI read photographed bills so no weight, rate or amount is missed. The key stays on this device only. (An Anthropic key also works.)</div>
+      <div class="field"><span>AI key ${ls.get('mg.aiKey') ? '· ✓ saved' : ''}</span><input id="aiKey" type="password" autocomplete="off" autocapitalize="off" placeholder="${ls.get('mg.aiKey') ? '•••••••• (saved)' : 'AIza…'}"></div>
       <div style="display:flex;gap:8px"><button class="btn sec" data-a="ai-save">Save key</button>${ls.get('mg.aiKey') ? '<button class="btn sec" data-a="ai-off">Remove</button>' : ''}</div>
-      <div class="small faint" style="margin-top:8px">Get a key at console.anthropic.com → API keys. Without it, the built-in reader is used.</div></div>
+      <div class="small faint" style="margin-top:8px">Get it free, no card: aistudio.google.com → Get API key. Free-tier bills may be used by Google to improve its products — skip the key if that bothers you; the built-in reader works without it.</div></div>
     <div class="card"><h3>Security</h3>
       <button class="btn sec" data-a="lock-settings">🔒 Passcode &amp; ${esc(bioName())} · ${getLock() ? 'On' : 'Off'}</button>
       <div class="small faint" style="margin-top:8px">Locks My Gold on this device. Each phone sets its own passcode.</div></div>
@@ -1232,7 +1232,7 @@ async function onClick(e) {
     case 'calib': S.tab = 'settings'; ls.set('mg.tab', 'settings'); render(); setTimeout(() => { $('#calibCard')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); $('#calK')?.focus(); }, 50); break;
     case 'theme-toggle': ls.set('mg.theme', isDark() ? 'light' : 'dark'); applyTheme(); render(); break;
     case 'lock-settings': lockSettingsSheet(); break;
-    case 'ai-save': { const k = ($('#aiKey')?.value || '').trim(); if (!/^sk-ant-[\w\-]{20,}$/.test(k)) { toast('That doesn’t look like an Anthropic key'); break; } ls.set('mg.aiKey', k); toast('AI bill reading is on'); render(); break; }
+    case 'ai-save': { const k = ($('#aiKey')?.value || '').trim(); if (!/^(sk-ant-[\w\-]{20,}|AIza[\w\-]{30,})$/.test(k)) { toast('That doesn’t look like a Gemini (AIza…) or Anthropic key'); break; } ls.set('mg.aiKey', k); toast('AI bill reading is on'); render(); break; }
     case 'ai-off': ls.del('mg.aiKey'); toast('AI bill reading is off'); render(); break;
     case 'signin': signIn(false); break;
     case 'signin-other': signIn(true); break;

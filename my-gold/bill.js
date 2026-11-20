@@ -124,7 +124,24 @@ Rules: weights in grams (gross = with stones, net = gold weight); amounts are pl
     return { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: c.toDataURL('image/jpeg', 0.88).split(',')[1] } };
   }
   const num = v => { const n = typeof v === 'string' ? parseFloat(v.replace(/[^\d.\-]/g, '')) : +v; return isFinite(n) ? n : 0; };
-  async function readAI(file, key) {
+  /** Free option: Google Gemini (key from aistudio.google.com). Tries a few model names since Google renames them. */
+  async function callGemini(file, key) {
+    const blk = await aiBlock(file), part = { inline_data: { mime_type: blk.source.media_type, data: blk.source.data } };
+    let last = 'AI could not read the bill.';
+    for (const model of ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.5-flash-lite']) {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
+        body: JSON.stringify({ contents: [{ parts: [part, { text: AI_PROMPT }] }], generationConfig: { responseMimeType: 'application/json', temperature: 0 } }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (res.ok) { const t = (j.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join(''); if (t) return t; last = 'AI gave no answer.'; continue; }
+      if (res.status === 400 && /API key/i.test(j.error?.message || '')) throw new Error('The AI key was not accepted — check it in Settings.');
+      if (res.status === 429) { last = 'Free AI limit reached for now (try again in a minute or tomorrow).'; continue; }
+      last = j.error?.message || last;
+    }
+    throw new Error(last);
+  }
+  async function callClaude(file, key) {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
@@ -132,7 +149,10 @@ Rules: weights in grams (gross = with stones, net = gold weight); amounts are pl
     });
     const j = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(res.status === 401 ? 'The AI key was not accepted — check it in Settings.' : res.status === 429 ? 'AI is busy or out of credit.' : (j.error?.message || 'AI could not read the bill.'));
-    const txt = (j.content || []).map(c => c.text || '').join('');
+    return (j.content || []).map(c => c.text || '').join('');
+  }
+  async function readAI(file, key) {
+    const txt = /^sk-ant-/.test(key) ? await callClaude(file, key) : await callGemini(file, key);
     const m = /\{[\s\S]*\}/.exec(txt); if (!m) throw new Error('AI gave no answer.');
     const a = JSON.parse(m[0]);
     const row = l => ({ title: String(l.title || '').trim(), karat: num(l.karat), type: ['coin', 'bar', 'jewellery'].includes(l.type) ? l.type : 'jewellery', pcs: num(l.pcs) || 1,
