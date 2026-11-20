@@ -45,14 +45,14 @@ const BILL = (() => {
     return c;
   }
   let worker = null;
-  async function ocr(canvas, onProgress) {
+  async function ocr(canvas, onProgress, psm = '6') {
     await loadScript(CDN.tesseract);
     if (!worker) {
       worker = await Tesseract.createWorker('eng', 1, {
         logger: m => { if (m.status === 'recognizing text') onProgress?.(Math.round(m.progress * 100)); },
       });
-      await worker.setParameters({ tessedit_pageseg_mode: '6', preserve_interword_spaces: '1' });
     }
+    await worker.setParameters({ tessedit_pageseg_mode: psm, preserve_interword_spaces: '1' });
     const { data } = await worker.recognize(canvas);
     return data.text || '';
   }
@@ -84,8 +84,65 @@ const BILL = (() => {
   async function read(file, onProgress) {
     let text;
     if (/pdf/i.test(file.type) || /\.pdf$/i.test(file.name || '')) text = (await pdfText(file, onProgress)).text;
-    else { const b = await bitmap(file); const w = b.width || b.naturalWidth, h = b.height || b.naturalHeight; text = await ocr(prepare(b, w, h), onProgress); }
+    else {
+      const b = await bitmap(file), w = b.width || b.naturalWidth, h = b.height || b.naturalHeight, cv = prepare(b, w, h);
+      text = await ocr(cv, onProgress, '6');
+      let res = parseBill(text);
+      if (!res.lines.length) {   // photos of curved/skewed paper read better in automatic layout mode
+        try {
+          const t2 = await ocr(cv, onProgress, '4'), r2 = parseBill(t2);
+          if (score(r2) > score(res)) { res = r2; text = t2; }
+          else if (!res.lines.length && r2.lines.length === 0 && !res.fallback && r2.fallback) { res = r2; text = t2; }
+        } catch {}
+      }
+      return { text, ...res };
+    }
     return { text, ...parseBill(text) };
+  }
+
+  const score = r => r.lines.length * 10 + (r.fallback ? 4 : 0) + (r.date ? 1 : 0) + (r.invoiceNo ? 1 : 0) + (r.totals.net != null ? 1 : 0);
+
+
+  /* ---------- optional: read the bill with Claude (needs the person's own API key) ---------- */
+  const AI_MODEL = 'claude-sonnet-5-5';
+  const AI_PROMPT = `You are reading a gold purchase bill / tax invoice (UAE or India). Extract EVERYTHING relevant and answer with ONE JSON object only — no prose, no markdown.
+Schema:
+{"shop":string,"invoiceNo":string,"date":"YYYY-MM-DD","currency":"AED"|"INR"|"USD"|"",
+ "rates":{"24":number,"22":number,"21":number,"18":number},   // gold rates per gram printed on the bill, if any
+ "lines":[{"title":string,"type":"coin"|"bar"|"jewellery","karat":number,"pcs":number,"gross":number,"net":number,"stones":number,"amount":number,"tax":number,"taxPct":number,"total":number}],
+ "exchange":[{"title":string,"karat":number,"gross":number,"net":number,"total":number}],  // old gold / scrap given in exchange (total as positive number)
+ "totals":{"sale":number|null,"tax":number|null,"net":number|null,"old":number|null},
+ "making":number|null}
+Rules: weights in grams (gross = with stones, net = gold weight); amounts are plain numbers without currency symbols or thousands separators; "total" of a line = amount including tax; "totals.sale" = total of the items sold, "totals.net" = final amount actually payable after any old-gold exchange. Use 0 or null when a value is not on the bill — never guess. Read the numbers digit by digit; keep decimal points exactly. Date must be the invoice date.`;
+  const b64 = buf => { let s = '', a = new Uint8Array(buf); for (let i = 0; i < a.length; i += 0x8000) s += String.fromCharCode.apply(null, a.subarray(i, i + 0x8000)); return btoa(s); };
+  async function aiBlock(file) {
+    if (/pdf/i.test(file.type) || /\.pdf$/i.test(file.name || ''))
+      return { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64(await file.arrayBuffer()) } };
+    const b = await bitmap(file), w = b.width || b.naturalWidth, h = b.height || b.naturalHeight, sc = Math.min(1, 1800 / Math.max(w, h));
+    const c = document.createElement('canvas'); c.width = Math.round(w * sc); c.height = Math.round(h * sc);
+    c.getContext('2d').drawImage(b, 0, 0, c.width, c.height);
+    return { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: c.toDataURL('image/jpeg', 0.88).split(',')[1] } };
+  }
+  const num = v => { const n = typeof v === 'string' ? parseFloat(v.replace(/[^\d.\-]/g, '')) : +v; return isFinite(n) ? n : 0; };
+  async function readAI(file, key) {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({ model: AI_MODEL, max_tokens: 2000, messages: [{ role: 'user', content: [await aiBlock(file), { type: 'text', text: AI_PROMPT }] }] }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(res.status === 401 ? 'The AI key was not accepted — check it in Settings.' : res.status === 429 ? 'AI is busy or out of credit.' : (j.error?.message || 'AI could not read the bill.'));
+    const txt = (j.content || []).map(c => c.text || '').join('');
+    const m = /\{[\s\S]*\}/.exec(txt); if (!m) throw new Error('AI gave no answer.');
+    const a = JSON.parse(m[0]);
+    const row = l => ({ title: String(l.title || '').trim(), karat: num(l.karat), type: ['coin', 'bar', 'jewellery'].includes(l.type) ? l.type : 'jewellery', pcs: num(l.pcs) || 1,
+      gross: num(l.gross) || num(l.net), net: num(l.net) || num(l.gross), stones: num(l.stones), amount: num(l.amount), tax: num(l.tax), taxPct: num(l.taxPct), total: Math.abs(num(l.total)) || num(l.amount) });
+    const t = a.totals || {}, nn = v => v == null || v === '' ? null : num(v);
+    const rates = {}; for (const [k, v] of Object.entries(a.rates || {})) if (num(v) > 50) rates[+k] = num(v);
+    return { text: txt, ai: true, shop: String(a.shop || ''), invoiceNo: String(a.invoiceNo || '').toUpperCase(), date: /^\d{4}-\d{2}-\d{2}$/.test(a.date || '') ? a.date : '',
+      currency: ['AED', 'INR', 'USD'].includes(a.currency) ? a.currency : '', rates,
+      lines: (a.lines || []).map(row).filter(l => l.gross > 0), exchange: (a.exchange || []).map(row).filter(l => l.gross > 0 || l.total > 0).map(e => ({ ...e, total: -Math.abs(e.total) })),
+      totals: { sale: nn(t.sale), tax: nn(t.tax), net: nn(t.net), old: nn(t.old) }, making: nn(a.making) || undefined };
   }
 
   /* ---------- understanding the text ---------- */
@@ -203,13 +260,45 @@ const BILL = (() => {
       if (neg) r.exchange.push({ ...row, total: -Math.abs(total) }); else if (gross > 0.05 && total >= 20) r.lines.push(row);
     }
 
+    // Fallback: no tidy item row found — look for weights written near "wt / gm / grams" and the bill total.
+    const tot0 = re => { const l = lines.filter(l => re.test(l) && numbers(l).length).pop(); if (!l) return null; const n = numbers(l).filter(n => n.dec === 2 || n.v >= 100); return n.length ? n[n.length - 1].v : null; };
+    if (!r.lines.length) {
+      let G = 0, N = 0; const any = [];
+      lines.forEach(l => {
+        if (OLD.test(l) && !ITEM_WORDS.test(l)) return;
+        const hasG = /\b(gross|gr|g\.?\s*wt)\b/i.test(l), hasN = /\b(net|nt|n\.?\s*wt)\b/i.test(l);
+        const unit = /\b(gms?|grams?|g)\b/i.test(l) || /\d\s*g\b/i.test(l), lab = hasG || hasN || /\b(wt|weight|wgt)\b/i.test(l);
+        if (!lab && !unit) return;
+        const ns = numbers(l).filter(n => !/\d\s*(k|kt|ct|karat|carat)$/i.test(n.raw) && n.v >= 0.1 && n.v <= 2000 && (n.dec >= 1 && n.dec <= 3 || (unit && n.dec === 0 && n.v < 500))).map(n => n.v);
+        if (!ns.length) return;
+        if (hasG && hasN && ns.length >= 2) { G = G || ns[0]; N = N || ns[1]; }
+        else if (hasN && !hasG) N = N || ns[0];
+        else if (hasG && !hasN) G = G || ns[0];
+        else any.push(ns[0]);
+      });
+      const g0 = G || N || any[0] || 0, n0 = N || G || any[0] || 0;
+      if (g0) {
+        const g = g0, nt = n0;
+        const total = r.totals0 = tot0(/^(net\s*(total|amount|payable|value)|grand\s*total|total\s*amount|amount\s*(payable|paid)|total\s*value|total)\b/i) ?? tot0(/\b(total|amount|price|value|paid)\b/i);
+        const named = lines.find(l => ITEM_WORDS.test(l)) || '';
+        r.lines.push({ title: titleFrom(named), karat: karatIn(all), type: typeIn(named || all), pcs: 1, gross: Math.max(g, nt), net: Math.min(g, nt), stones: 0, amount: total || 0, tax: 0, taxPct: 0, total: total || 0, guess: true });
+        r.fallback = true;
+      } else {
+        // no weight at all — still offer the bill total
+        const total = tot0(/^(net\s*(total|amount|payable)|grand\s*total|total\s*amount|amount\s*(payable|paid))/i);
+        if (total) { r.totals.net = total; r.fallback = true; }
+      }
+    }
+
     const tot = re => {
       const l = lines.filter(l => re.test(l) && numbers(l).length).pop(); if (!l) return null;
       const all = numbers(l), last = all[all.length - 1], m2 = all.filter(n => n.dec === 2);
       if (last && last.dec === 0 && !/,/.test(last.raw) && String(Math.abs(last.v)).length >= 4 && m2.length) return last.v / 100;
       return m2.length ? m2[m2.length - 1].v : null;
     };
+    const keepNet = r.totals.net;
     r.totals = { sale: tot(/^total\s*sale/i), tax: tot(/total\s*(tax|vat|gst)\s*amount|^(vat|gst)\b/i), net: tot(/^(net\s*total|grand\s*total|net\s*amount|amount\s*payable|total\s*amount)/i), old: tot(/total\s*old\s*gold/i) };
+    if (r.totals.net == null && keepNet != null) r.totals.net = keepNet;
     if (r.totals.tax == null) {   // India: CGST + SGST (or IGST) on separate lines
       const g = lines.filter(l => /\b(cgst|sgst|igst|vat)\b/i.test(l) && !/gstin/i.test(l)).map(l => numbers(l).filter(n => n.dec === 2 && n.v > 0).pop()?.v || 0);
       if (g.some(Boolean)) r.totals.tax = Math.round(g.reduce((a, b) => a + b, 0) * 100) / 100;
@@ -220,6 +309,6 @@ const BILL = (() => {
     return r;
   }
 
-  return { read, parseBill };
+  return { read, readAI, parseBill };
 })();
 if (typeof module !== 'undefined') module.exports = BILL;

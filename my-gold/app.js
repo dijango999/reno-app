@@ -23,7 +23,7 @@ const CFG = {
   graph: 'https://graph.microsoft.com/v1.0',
   dataFile: 'my-gold.json',
   pointer: 'Apps/My Gold/location.json',
-  version: '1.0.9',
+  version: '1.0.10',
 };
 const CANON = 'https://dijango999.github.io/reno-app/my-gold/';
 const ON_SITE = location.hostname === 'dijango999.github.io';
@@ -824,6 +824,11 @@ function settingsView() {
       <div class="seg">${[['light', '☀️ Light'], ['dark', '🌙 Dark'], ['auto', 'Auto']].map(([k, l]) => `<button data-th="${k}" class="${(ls.get('mg.theme') || 'auto') === k ? 'on' : ''}">${l}</button>`).join('')}</div>
       <div class="small faint" style="margin-top:8px">Auto follows your iPhone or Mac light/dark setting. Tap ☀️/🌙 at the top of any screen to switch quickly.</div>
     </div>
+    <div class="card"><h3>AI bill reading</h3>
+      <div class="small muted">Optional. With an Anthropic API key, a photographed bill is read by Claude so no weight, rate or amount is missed. The key stays on this device only; a bill costs about a cent.</div>
+      <div class="field"><span>API key ${ls.get('mg.aiKey') ? '· ✓ saved' : ''}</span><input id="aiKey" type="password" autocomplete="off" autocapitalize="off" placeholder="${ls.get('mg.aiKey') ? '•••••••• (saved)' : 'sk-ant-…'}"></div>
+      <div style="display:flex;gap:8px"><button class="btn sec" data-a="ai-save">Save key</button>${ls.get('mg.aiKey') ? '<button class="btn sec" data-a="ai-off">Remove</button>' : ''}</div>
+      <div class="small faint" style="margin-top:8px">Get a key at console.anthropic.com → API keys. Without it, the built-in reader is used.</div></div>
     <div class="card"><h3>Security</h3>
       <button class="btn sec" data-a="lock-settings">🔒 Passcode &amp; ${esc(bioName())} · ${getLock() ? 'On' : 'Off'}</button>
       <div class="small faint" style="margin-top:8px">Locks My Gold on this device. Each phone sets its own passcode.</div></div>
@@ -996,9 +1001,16 @@ async function scanBill(file) {
     draft._newDocs.push(entry);
   }
   try {
-    const r = await BILL.read(file, p => { scanState.msg = `Reading bill… ${p}%`; paintScan(); });
+    let r, aiNote = '';
+    const key = ls.get('mg.aiKey');
+    if (key) {
+      try { scanState.msg = 'Reading bill with AI…'; paintScan(); r = await BILL.readAI(file, key); }
+      catch (e) { aiNote = (e.message || 'AI failed') + ' Used the built-in reader instead. '; scanState.msg = 'Reading bill…'; paintScan(); }
+    }
+    if (!r) r = await BILL.read(file, p => { scanState.msg = `Reading bill… ${p}%`; paintScan(); });
+    r.aiNote = aiNote;
     scanState = { busy: false, result: r, file, msg: '' };
-    if (!r.lines.length && !r.date && !r.invoiceNo) { scanState.msg = 'Couldn’t read details from this bill. It is attached — please type the details.'; redrawForm(); return; }
+    if (!r.lines.length && !r.date && !r.invoiceNo && r.totals.net == null) { scanState.msg = 'Couldn’t read details from this bill (try a flatter, brighter, closer photo, or a PDF). It is attached — please type the details.'; redrawForm(); return; }
     applyBill(r, r.lines.length === 1 ? 0 : -1);
   } catch (e) { scanState = { busy: false, msg: e.message || 'Could not read the bill.', result: null, file }; paintScan(); }
 }
@@ -1015,7 +1027,7 @@ function applyBill(r, idx) {
     d.weight = String(L.gross); found.push('weight');
     if (L.type === 'jewellery' && L.stones) { d.stoneWeight = String(L.stones); found.push('stones'); }
     const one = r.lines.length === 1;
-    const paid = one ? (r.exchange.length ? (r.totals.sale ?? L.total) : (r.totals.net ?? r.totals.sale ?? L.total)) : L.total;
+    const paid = L.guess ? (r.totals.net ?? L.total) : one ? (r.exchange.length ? (r.totals.sale ?? L.total) : (r.totals.net ?? r.totals.sale ?? L.total)) : L.total;
     if (paid > 0) { d.pricePaid = String(paid); found.push('price'); }
     const vat = L.tax || (one ? r.totals.tax : 0); if (vat > 0) d.vat = String(vat);
     if (r.making && one) d.making = String(r.making);
@@ -1029,7 +1041,8 @@ function applyBill(r, idx) {
     if (!String(d.notes || '').includes('Old gold given in exchange')) d.notes = [d.notes, note].filter(Boolean).join('\n');
     found.push('old-gold exchange');
   }
-  scanState.msg = (L ? '✓ Filled ' : '✓ Found ') + found.join(', ') + ' — please check before saving.';
+  if (!L && r.totals.net > 0 && !d.pricePaid) { d.pricePaid = String(r.totals.net); found.push('price'); }
+  scanState.msg = (r.aiNote || '') + (r.ai ? '🤖 ' : '') + (L ? '✓ Filled ' : '✓ Found ') + found.join(', ') + (L || !r.lines.length ? ' — please check before saving.' : '') + (!L && !r.lines.length ? ' Couldn’t find the weight — please type it.' : '');
   if (L) scanState.result = { ...r, lines: [] };   // choice made
   const sb = $('.sb', sheetEl), y = sb?.scrollTop; if (sb) { sb.innerHTML = formHtml(); sb.scrollTop = y; }
 }
@@ -1219,6 +1232,8 @@ async function onClick(e) {
     case 'calib': S.tab = 'settings'; ls.set('mg.tab', 'settings'); render(); setTimeout(() => { $('#calibCard')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); $('#calK')?.focus(); }, 50); break;
     case 'theme-toggle': ls.set('mg.theme', isDark() ? 'light' : 'dark'); applyTheme(); render(); break;
     case 'lock-settings': lockSettingsSheet(); break;
+    case 'ai-save': { const k = ($('#aiKey')?.value || '').trim(); if (!/^sk-ant-[\w\-]{20,}$/.test(k)) { toast('That doesn’t look like an Anthropic key'); break; } ls.set('mg.aiKey', k); toast('AI bill reading is on'); render(); break; }
+    case 'ai-off': ls.del('mg.aiKey'); toast('AI bill reading is off'); render(); break;
     case 'signin': signIn(false); break;
     case 'signin-other': signIn(true); break;
     case 'demo': {
