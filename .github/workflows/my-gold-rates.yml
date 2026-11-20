@@ -1,0 +1,37 @@
+# Reads UAE (igold.ae) and Kerala (goodreturns.in) gold rates for My Gold every 30 minutes
+# and saves them to rates.json on the "gold-rates" branch (kept as a single commit).
+name: My Gold rates
+on:
+  schedule:
+    - cron: '7,37 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['my-gold/tools/fetch-rates.mjs', '.github/workflows/my-gold-rates.yml']
+permissions:
+  contents: write
+concurrency:
+  group: my-gold-rates
+  cancel-in-progress: false
+jobs:
+  rates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with: { sparse-checkout: my-gold/tools, path: app }
+      - name: Get the current rates file
+        run: |
+          mkdir out && cd out && git init -q
+          git remote add origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          git fetch -q --depth=1 origin gold-rates && git checkout -q FETCH_HEAD -- rates.json || echo "first run"
+      - name: Read igold.ae and goodreturns.in
+        run: node app/my-gold/tools/fetch-rates.mjs out/rates.json
+      - name: Save to the gold-rates branch
+        run: |
+          cd out
+          git config user.name "my-gold-bot"; git config user.email "my-gold-bot@users.noreply.github.com"
+          git checkout -q --orphan gold-rates
+          git add rates.json
+          git commit -q -m "Gold rates $(date -u +%FT%TZ)"
+          git push -q -f origin gold-rates

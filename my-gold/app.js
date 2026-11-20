@@ -96,7 +96,7 @@ const S = {
   tab: ls.get('mg.tab') || 'home',
   f: { owner: '', type: '', q: '', sort: ls.get('mg.sort') || 'newest', sold: false },
   sync: { state: 'idle', at: null, msg: '' },
-  rates: lsJSON('mg.rates'), ratesBusy: false, ratesErr: '',
+  rates: lsJSON('mg.rates'), ratesBusy: false, ratesErr: '', local: lsJSON('mg.local'),
 };
 let tokens = lsJSON('mg.tokens');
 
@@ -435,7 +435,18 @@ async function rateOn(day) {
   return r;
 }
 /** Live price: spot from gold-api.com, converted with today's currency rates. */
+/** Real retail rates: igold.ae (UAE) and goodreturns.in (Kerala), read every 30 minutes by a GitHub job. */
+const LOCAL_URL = 'https://raw.githubusercontent.com/dijango999/reno-app/gold-rates/rates.json';
+async function refreshLocal() {
+  try {
+    const j = await fetchJSON(LOCAL_URL + '?t=' + Math.floor(Date.now() / 60000), 8000);
+    if (j && (j.uae || j.kerala)) { S.local = j; ls.set('mg.local', JSON.stringify(j)); }
+  } catch {}
+}
+const uaeLive = () => { const u = S.local?.uae; return u?.[24] && Date.now() - new Date(u.at) < 36 * 3600e3 ? u : null; };
+const keralaLive = () => { const k = S.local?.kerala; return k?.[24] && k.date && daysBetween(k.date, todayStr()) <= 3 ? k : null; };
 async function refreshRates(force) {
+  refreshLocal().then(() => { if (S.phase === 'ready' && !S.ratesBusy) render(); });
   if (S.ratesBusy) return;
   if (!force && S.rates && Date.now() - S.rates.at < 4 * 60 * 1000) return;
   S.ratesBusy = true; S.ratesErr = ''; paintRates();
@@ -474,6 +485,8 @@ function uae24() { const r = S.rates; return r?.aed ? r.aed / OZ * (1 + (+st().u
 function keralaPure() { const r = S.rates; return r?.inr ? r.inr / OZ * (1 + (+st().keralaPrem || 0) / 100) : null; }
 /** Market price of one gram: AED → UAE rate, INR → Kerala rate, USD → international spot. */
 function rateFor(karat, purity, c = cur()) {
+  const L = c === 'AED' ? uaeLive() : c === 'INR' ? keralaLive() : null;
+  if (L) return L[+karat] || L[24] * purity / 0.999;
   if (c === 'AED') { const b = uae24(); return b == null ? null : b * (DJG[+karat] ?? purity / 0.999); }
   if (c === 'INR') { const b = keralaPure(); return b == null ? null : b * purity; }
   return S.rates?.usd ? S.rates.usd / OZ * purity : null;
@@ -504,6 +517,8 @@ function convert(amount, from, to, rs = S.rates) {
 const costIn = (it, c = cur()) => it.pricePaid ? convert(+it.pricePaid, it.currency || c, c, it.buyRate || S.rates) : null;
 /** Market value of the gold on the day it was bought. */
 function marketThen(it, c = cur()) {
+  const h = it.localThen || S.local?.history?.[it.purchaseDate], L = c === 'AED' ? h?.uae : c === 'INR' ? h?.kerala : null;
+  if (L?.[24]) return netWeight(it) * (L[+it.karat] || L[24] * purityOf(it) / 0.999);
   const r = it.buyRate; if (!r) return null;
   const perOz = c === 'USD' ? r.usd : c === 'AED' ? r.aed : r.inr;
   return perOz ? pureGrams(it) * perOz / OZ : null;
@@ -644,9 +659,10 @@ function ratesStrip() {
   const ker = [[22, '22K · 1 g', 1], [22, '1 pavan · 8 g', 8], [24, '24K · 1 g', 1], [18, '18K · 1 g', 1]].map(([k, l, g]) =>
     `<div class="rate"><div class="k">${l}</div><div class="v num">${money(rateFor(k, KARATS.find(x => x.k === k).p, 'INR') * g, 'INR', 0)}</div></div>`).join('');
   const when = r ? (r.quoteAt && /T/.test(r.quoteAt) ? new Date(r.quoteAt).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : timeStr(r.at)) : '';
-  return `<div class="mkt"><span>🇦🇪 UAE rate</span><span class="faint">AED per gram</span></div><div class="rates">${uae}</div>
-    <div class="mkt"><span>🇮🇳 Kerala rate</span><span class="faint">${s.keralaSetAt ? 'matched to board rate ' + shortDate(s.keralaSetAt) : '<button class="linkbtn" data-a="calib" style="padding:0;font-size:12px">estimated · set today’s rate</button>'}</span></div><div class="rates">${ker}</div>
-    <div class="small faint" style="margin-top:6px">${r ? `Live · ${esc(when)}${fx ? ` · 1 AED = ₹${fx.toFixed(2)}` : ''} · before VAT/GST &amp; making` : 'Getting today’s gold price…'}${S.ratesErr ? ` · <span style="color:var(--bad)">${esc(S.ratesErr)}</span>` : ''}</div>`;
+  const U = uaeLive(), K = keralaLive(), est = '<button class="linkbtn" data-a="calib" style="padding:0;font-size:12px">estimated · set today’s rate</button>';
+  return `<div class="mkt"><span>🇦🇪 UAE rate</span><span class="faint">${U ? `igold.ae · ${new Date(U.at).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}` : est}</span></div><div class="rates">${uae}</div>
+    <div class="mkt"><span>🇮🇳 Kerala rate</span><span class="faint">${K ? `GoodReturns · ${shortDate(K.date)}` : est}</span></div><div class="rates">${ker}</div>
+    <div class="small faint" style="margin-top:6px">${r ? `World price ${money(r.usd, 'USD', 0)}/oz · ${esc(when)}${fx ? ` · 1 AED = ₹${fx.toFixed(2)}` : ''} · before VAT/GST &amp; making` : 'Getting today’s gold price…'}${S.ratesErr ? ` · <span style="color:var(--bad)">${esc(S.ratesErr)}</span>` : ''}</div>`;
 }
 function homeView() {
   const all = held(), t = totals(all), c = cur();
@@ -796,7 +812,8 @@ function settingsView() {
       <div class="small faint" style="margin-top:8px">AED values use the UAE rate, INR values the Kerala rate, USD the international price.</div>
     </div>
     <div class="card" id="calibCard"><h3>Market rates</h3>
-      <div class="small muted">Both follow the live gold price. Type today's published 22K rate once (from the newspaper, Malabar/Joyalukkas board or Gulf News) and the app matches it from then on.</div>
+      <div class="small muted">UAE rates come from <b>igold.ae</b> and Kerala rates from <b>GoodReturns</b>, checked every 30 minutes.
+        ${uaeLive() && keralaLive() ? '✓ Both are up to date.' : 'If a site can’t be reached, the app estimates from the world gold price. Typing that day’s 22K rate below makes the estimate exact.'}</div>
       <div class="field"><span>🇮🇳 Kerala 22K board rate today (₹ per gram)</span><input id="calK" type="number" inputmode="decimal" placeholder="${Math.round(rateFor(22, 0.916, 'INR') || 0) || 'e.g. 13675'}">
         <span class="hint">Now ${(+s.keralaPrem || 0).toFixed(2)}% above the international price${s.keralaSetAt ? ' · set ' + shortDate(s.keralaSetAt) : ' (estimate)'} — mostly India's import duty.</span></div>
       <div class="field"><span>🇦🇪 UAE 22K rate today (AED per gram)</span><input id="calU" type="number" inputmode="decimal" placeholder="${(rateFor(22, 0.916, 'AED') || 0).toFixed(2)}">
@@ -866,7 +883,7 @@ function openItem(id) {
       <div class="box"><div class="k">Worth today · ${marketName(c)}</div><div class="v num">${money(v, c, 0)}</div>${(() => { const o = otherCur(c), ov = valueNow(it, o); return ov != null ? `<div class="small muted num">${o === 'INR' ? 'Kerala' : 'UAE'}: ${money(ov, o, 0)}</div>` : ''; })()}</div>
       <div class="box"><div class="k">You paid</div><div class="v num">${cst != null ? money(cst, c, 0) : '–'}</div>${cst != null && it.currency && it.currency !== c ? `<div class="small muted num">${money(+it.pricePaid, it.currency, 0)}</div>` : ''}</div>
       <div class="box"><div class="k">Gain</div><div class="v num ${gain >= 0 ? 'up' : 'down'}">${gain != null ? (gain >= 0 ? '+' : '') + money(gain, c, 0) : '–'}</div>${gain != null && cst ? `<div class="small num ${gain >= 0 ? 'up' : 'down'}">${pct(gain / cst * 100)}</div>` : ''}</div>
-      <div class="box"><div class="k">Gold value on purchase day</div><div class="v num">${then != null ? money(then, c, 0) : '–'}</div>${then != null && cst ? `<div class="small muted num">Paid ${pct((cst - then) / then * 100)} over gold value</div>` : ''}</div>
+      <div class="box"><div class="k">Gold value on purchase day${(it.localThen || S.local?.history?.[it.purchaseDate]) && c !== 'USD' ? ' · ' + marketName(c) + ' rate' : ''}</div><div class="v num">${then != null ? money(then, c, 0) : '–'}</div>${then != null && cst ? `<div class="small muted num">Paid ${pct((cst - then) / then * 100)} over gold value</div>` : ''}</div>
     </div>
     <div class="card"><dl class="kv">
       <dt>Bought</dt><dd>${shortDate(it.purchaseDate)}</dd>
@@ -985,7 +1002,7 @@ async function saveForm(btn) {
       purchaseDate: d.purchaseDate || '', pricePaid: num(d.pricePaid) > 0 ? num(d.pricePaid) : 0, currency: d.currency,
       billRate: num(d.billRate) > 0 ? num(d.billRate) : 0, making: num(d.making) > 0 ? num(d.making) : 0, vat: num(d.vat) > 0 ? num(d.vat) : 0,
       shop: d.shop.trim(), invoiceNo: d.invoiceNo.trim(), purpose: d.type === 'jewellery' ? d.purpose : 'investment', zakat: d.zakat,
-      notes: d.notes.trim(), buyRate: buyRate || null, status: d.status || 'held', soldDate: d.soldDate, soldPrice: d.soldPrice,
+      notes: d.notes.trim(), buyRate: buyRate || null, localThen: S.local?.history?.[d.purchaseDate] || d.localThen || null, status: d.status || 'held', soldDate: d.soldDate, soldPrice: d.soldPrice,
     };
     clean.weight = Math.round(w * 1000) / 1000;
     const keepPhotos = new Set(d.photos.map(p => p.id));
