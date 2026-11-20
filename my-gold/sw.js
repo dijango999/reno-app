@@ -1,6 +1,6 @@
 // Keeps the app itself available offline. Your data always comes from OneDrive.
-const CACHE = 'my-gold-v14';
-const SHELL = ['./', 'index.html', 'bill.js?v=1.0.14', 'app.js?v=1.0.14', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
+const CACHE = 'my-gold-v15';
+const SHELL = ['./', 'index.html', 'bill.js?v=1.0.15', 'app.js?v=1.0.15', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL))); self.skipWaiting(); });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))));

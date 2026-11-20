@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>My Gold</title>
 <meta name="description" content="Family gold record — kept in your own OneDrive.">
 <meta name="theme-color" content="#F7F3EA" media="(prefers-color-scheme: light)">
@@ -38,7 +38,7 @@
   --hdr:rgba(14,12,9,.84); --navbg:rgba(24,21,15,.92); --press:#1F1B14; --fill:#241F17;
   --hero1:#2B2216; --hero2:#16120B; color-scheme:dark }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;background:var(--bg);color:var(--ink)}
+html,body{touch-action:manipulation;-webkit-text-size-adjust:100%;margin:0;background:var(--bg);color:var(--ink)}
 body{font:15px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh}
 button,input,select,textarea{font:inherit;color:inherit}
 button{cursor:pointer}
@@ -230,11 +230,12 @@ html.is-locked #app,html.is-locked .sheet,html.is-locked .scrim{visibility:hidde
 .keypad span{width:76px}
 .scan{background:var(--goldSoft);border:1px solid var(--gold);border-radius:16px;padding:12px;margin-top:12px}
 .scanrow{display:flex;gap:10px;align-items:center}
+*{-webkit-tap-highlight-color:transparent}button,a,label,select,summary,[data-a],[data-tab]{touch-action:manipulation}
 </style>
 </head>
 <body>
 <div id="app"><div class="welcome"><img src="icons/icon-512.png" alt=""><h1>My Gold</h1><p>Loading…</p></div></div>
-<script src="bill.js?v=1.0.14"></script>
-<script src="app.js?v=1.0.14"></script>
+<script src="bill.js?v=1.0.15"></script>
+<script src="app.js?v=1.0.15"></script>
 </body>
 </html>

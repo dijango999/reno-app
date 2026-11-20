@@ -23,7 +23,7 @@ const CFG = {
   graph: 'https://graph.microsoft.com/v1.0',
   dataFile: 'my-gold.json',
   pointer: 'Apps/My Gold/location.json',
-  version: '1.0.14',
+  version: '1.0.15',
 };
 const CANON = 'https://dijango999.github.io/reno-app/my-gold/';
 const ON_SITE = location.hostname === 'dijango999.github.io';
@@ -588,7 +588,37 @@ function nextRamadan(from = todayStr()) {
   for (let i = 0; i < 400; i++) { const d = addDays(from, i), h = hijriParts(d); if (h && h.m === 9 && h.d === 20) { out = d; break; } }
   _nr.set(from, out); return out;
 }
-const zakatDate = () => { const s = S.data?.settings?.zakatDate; return s && s >= todayStr() ? s : nextRamadan(); };
+const zakatDate = () => nextRamadan();   // always 20 Ramadan
+const zakatDueTotal = () => S.data.settings.zakatCombine ? zakatFor(null).due : owners().reduce((a, o) => a + zakatFor(o.id).due, 0);
+/** Reminder card: from 14 days before Ramadan until 20 Ramadan, says how much will be due on the 20th. */
+function ramadanBanner() {
+  if (!S.data) return '';
+  const today = todayStr(), zd = zakatDate(), start = addDays(zd, -19), c = cur();
+  const toStart = daysBetween(today, start), toZ = daysBetween(today, zd);
+  if (toStart > 14 || toZ < 0) return '';
+  if ((S.data.zakatLog || []).some(z => (z.date || '') >= start && (z.date || '') <= zd)) return '';
+  const due = zakatDueTotal(), amt = due ? `about <b>${money(due, c, 0)}</b>` : 'nothing due at today’s gold price';
+  const first = toStart === 0, inR = toStart < 0;
+  const head = first ? '🌙 Ramadan Mubarak — zakat reminder' : inR ? '🌙 Zakat is due on 20 Ramadan' : `🌙 Ramadan starts in about ${toStart} day${toStart === 1 ? '' : 's'}`;
+  return `<button class="card" data-tab="zakat" style="width:100%;text-align:left;font:inherit;border:1.5px solid var(--gold);display:block">
+    <div style="font-weight:800;font-size:16px">${head}</div>
+    <div class="small" style="margin-top:6px">${toZ === 0 ? 'Zakat is due <b>today</b>' : `On <b>20 Ramadan (${shortDate(zd)}, in ${toZ} day${toZ === 1 ? '' : 's'})</b> zakat is due`}: ${amt}.</div>
+    <div class="small faint" style="margin-top:4px">${due ? 'Worked out from today’s gold price; it can change until the 20th.' : ''} Tap to see the breakdown.</div></button>`;
+}
+/** Calendar file: reminders on 1 Ramadan and 20 Ramadan for the next 5 years (all-day, with an alert at 9am). */
+function zakatIcs() {
+  const ev = []; let zd = nextRamadan();
+  const d8 = d => d.replace(/-/g, '');
+  for (let i = 0; i < 5; i++) {
+    const st = addDays(zd, -19), n = (x, t, note) => ev.push(['BEGIN:VEVENT', `UID:mygold-${x}-${t.length}${t.includes('Ramadan 1 ') ? 'a' : 'b'}@my-gold`, `DTSTAMP:${d8(todayStr())}T000000Z`, `DTSTART;VALUE=DATE:${d8(x)}`, `DTEND;VALUE=DATE:${d8(addDays(x, 1))}`,
+      `SUMMARY:${t}`, `DESCRIPTION:${note}`, 'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${t}`, 'TRIGGER:PT9H', 'END:VALARM', 'END:VEVENT'].join('\r\n'));
+    n(st, '🌙 Ramadan 1 – check your zakat in My Gold', 'Open My Gold > Zakat to see how much is due on 20 Ramadan.');
+    n(zd, '🌙 20 Ramadan – pay zakat on gold', 'Zakat on gold is due today. Open My Gold > Zakat for the amount.');
+    zd = nextRamadan(addDays(zd, 1));
+  }
+  return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//My Gold//EN', 'CALSCALE:GREGORIAN', ...ev, 'END:VCALENDAR'].join('\r\n');
+}
+
 /** Why a piece is (or is not) counted for zakat. */
 function zakatRule(it) {
   if (it.zakat === 'yes') return { due: true, why: 'Marked as zakatable' };
@@ -711,12 +741,13 @@ function homeView() {
       <h2 class="serif" style="margin-top:8px">Add your first piece</h2>
       <p class="muted">Coins, bars or jewellery — add a photo and the bill, and My Gold works out what it's worth today.</p>
       <button class="btn" data-a="add" style="max-width:260px;margin:14px auto 0">＋ Add gold</button></div>`;
-  const zDue = S.data.settings.zakatCombine ? zakatFor(null).due : owners().reduce((a, o) => a + zakatFor(o.id).due, 0), zd = zakatDate();
+  const zDue = zakatDueTotal(), zd = zakatDate();
   const byType = Object.keys(TYPES).map(k => ({ k, v: totals(all.filter(i => i.type === k)) })).filter(x => x.v.count);
   const byKarat = [...new Set(all.map(karatLabel))].map(l => ({ l, v: totals(all.filter(i => karatLabel(i) === l)) })).sort((a, b) => b.v.value - a.v.value);
   const KC = ['#D4A017', '#B45309', '#EAB308', '#A16207', '#F59E0B', '#78350F'];
   const recent = [...all].sort((a, b) => cmpText(b.createdAt || '', a.createdAt || '')).slice(0, 4);
   return `
+    ${ramadanBanner()}
     <div class="hero">
       <div class="lbl">Family gold · today</div>
       <div class="big num">${money(t.value, c, 0)}</div>
@@ -817,7 +848,9 @@ function zakatView() {
       <div class="small muted" style="margin-top:8px">${s.zakatMethod === 'hanafi' ? 'All gold, including jewellery worn, is counted.' : 'Coins, bars and investment jewellery are counted. Jewellery worn for personal use is exempt.'} You can override any piece when editing it.</div>
       <div class="field"><span>Count gold</span><div class="seg"><button data-zc="0" class="${!combine ? 'on' : ''}">Per person</button><button data-zc="1" class="${combine ? 'on' : ''}">Family together</button></div>
         <span class="hint">${combine ? `Family zakatable gold: ${grams(fam.pure, 2)} pure — ${fam.above ? 'above' : 'below'} the ${NISAB_G} g nisab.` : 'Zakat is each owner’s duty, so each person is checked against nisab on their own.'}</span></div>
-      <div class="field"><span>Zakat date</span><input type="date" id="zdate" value="${esc(s.zakatDate || '')}"><span class="hint">Every year on 20 Ramadan — next ${shortDate(nextRamadan())}. Set a date here only to change this year's day; it goes back to 20 Ramadan afterwards.</span></div>
+      <div class="field"><span>Zakat date</span><div style="font-weight:700">Always 20 Ramadan · next ${shortDate(nextRamadan())}</div>
+        <span class="hint">You’ll see a reminder here and on Home from the 1st of Ramadan (and 2 weeks before) with the amount due.</span>
+        <button class="btn sec" data-a="zcal" style="margin-top:8px">📅 Add reminders to my Calendar</button></div>
     </div>
     ${per.map(({ o, z }) => `<div class="card">
       <div class="ph" style="margin-bottom:12px"><span class="av" style="--c:${o.color}">${esc(initials(o.name))}</span><span style="font-weight:700;font-size:16px;flex:1">${esc(o.name)}</span>
@@ -1270,6 +1303,7 @@ async function onClick(e) {
     case 'calib': S.tab = 'settings'; ls.set('mg.tab', 'settings'); render(); setTimeout(() => { $('#calibCard')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); $('#calK')?.focus(); }, 50); break;
     case 'theme-toggle': ls.set('mg.theme', isDark() ? 'light' : 'dark'); applyTheme(); render(); break;
     case 'lock-settings': lockSettingsSheet(); break;
+    case 'zcal': { const u = URL.createObjectURL(new Blob([zakatIcs()], { type: 'text/calendar' })); const w = window.open(u, '_blank'); if (!w) { const x = document.createElement('a'); x.href = u; x.download = 'my-gold-zakat.ics'; x.click(); } toast('Opening Calendar…'); break; }
     case 'ai-save': { const k = ($('#aiKey')?.value || '').trim(); if (!/^(sk-ant-[\w\-]{20,}|AIza[\w\-]{30,})$/.test(k)) { toast('That doesn’t look like a Gemini (AIza…) or Anthropic key'); break; } ls.set('mg.aiKey', k); toast('AI bill reading is on'); render(); break; }
     case 'ai-off': ls.del('mg.aiKey'); toast('AI bill reading is off'); render(); break;
     case 'signin': signIn(false); break;
@@ -1361,7 +1395,6 @@ async function finishSetup(btn) {
 async function onChange(e) {
   const t = e.target;
   if (t.id === 'sort') { S.f.sort = t.value; ls.set('mg.sort', t.value); render(); return; }
-  if (t.id === 'zdate') { mutateFast(d => { d.settings.zakatDate = t.value; }); return; }
   if (t.id === 'calK' || t.id === 'calU') {
     const v = num(t.value), r = S.rates; if (!(v > 0) || !r) return;
     const base = t.id === 'calK' ? r.inr / OZ * 0.916 : r.aed / OZ * DJG[22];
