@@ -23,7 +23,7 @@ const CFG = {
   graph: 'https://graph.microsoft.com/v1.0',
   dataFile: 'my-gold.json',
   pointer: 'Apps/My Gold/location.json',
-  version: '1.0.12',
+  version: '1.0.13',
 };
 const CANON = 'https://dijango999.github.io/reno-app/my-gold/';
 const ON_SITE = location.hostname === 'dijango999.github.io';
@@ -282,6 +282,15 @@ function mutate(change) {
   const p = saving.then(run, run);
   saving = p.catch(() => {});
   return p.catch(e => { setSync('bad', e.message); toast(e.message); return false; });
+}
+/** Instant version for small changes: shows the result at once, saves to OneDrive in the background (undoes it if the save fails). */
+function mutateFast(change) {
+  if (S.demo || !S.data) return mutate(change);
+  change(S.data); S.data.savedAt = isoNow();
+  try { ls.set('mg.cache', JSON.stringify(S.data)); } catch {}
+  render();
+  mutate(change).then(ok => { if (!ok) pull(true); });
+  return Promise.resolve(true);
 }
 function applyData(d, etag) {
   S.data = d; S.etag = etag;
@@ -1237,10 +1246,10 @@ async function onClick(e) {
   const rmd = t.closest('[data-rmd]'); if (rmd) { readForm(); draft._newDocs = draft._newDocs.filter(p => p.id !== rmd.dataset.rmd); redrawForm(); return; }
   const oc = t.closest('[data-oc]'); if (oc) { sheetEl.dataset.color = oc.dataset.oc; sheetEl.querySelectorAll('[data-oc]').forEach(b => { b.classList.toggle('on', b === oc); b.style.borderWidth = b === oc ? '3px' : '1px'; }); return; }
   // settings toggles
-  const sc = t.closest('[data-setcur]'); if (sc) { mutate(d => { d.settings.currency = sc.dataset.setcur; }); return; }
+  const sc = t.closest('[data-setcur]'); if (sc) { mutateFast(d => { d.settings.currency = sc.dataset.setcur; }); return; }
   const th = t.closest("[data-th]"); if (th) { ls.set("mg.theme", th.dataset.th); applyTheme(); render(); return; }
-  const zc = t.closest('[data-zc]'); if (zc) { mutate(d => { d.settings.zakatCombine = zc.dataset.zc === '1'; }); return; }
-  const zm = t.closest('[data-zm]'); if (zm) { mutate(d => { d.settings.zakatMethod = zm.dataset.zm; }); return; }
+  const zc = t.closest('[data-zc]'); if (zc) { mutateFast(d => { d.settings.zakatCombine = zc.dataset.zc === '1'; }); return; }
+  const zm = t.closest('[data-zm]'); if (zm) { mutateFast(d => { d.settings.zakatMethod = zm.dataset.zm; }); return; }
   const cu = t.closest('[data-cur]'); if (cu) { collectSetup(); S.setupCur = cu.dataset.cur; render(); return; }
 
   const a = t.closest('[data-a]'); if (!a) return;
@@ -1283,24 +1292,24 @@ async function onClick(e) {
     }
     case 'dispose-save': {
       const kind = sheetEl.dataset.dk, date = $('#sdate', sheetEl).value, price = num($('#sprice', sheetEl)?.value);
-      if (await mutate(d => { const it = d.items.find(i => i.id === id); if (it) { it.status = kind; it.soldDate = date; it.soldPrice = kind === 'sold' && price > 0 ? price : 0; it.updatedAt = isoNow(); } })) { closeSheet(); toast('Updated ✓'); }
+      if (await mutateFast(d => { const it = d.items.find(i => i.id === id); if (it) { it.status = kind; it.soldDate = date; it.soldPrice = kind === 'sold' && price > 0 ? price : 0; it.updatedAt = isoNow(); } })) { closeSheet(); toast('Updated ✓'); }
       break;
     }
-    case 'unsell': if (await mutate(d => { const it = d.items.find(i => i.id === id); if (it) { it.status = 'held'; delete it.soldDate; delete it.soldPrice; } })) { closeSheet(true); openItem(id); } break;
+    case 'unsell': if (await mutateFast(d => { const it = d.items.find(i => i.id === id); if (it) { it.status = 'held'; delete it.soldDate; delete it.soldPrice; } })) { closeSheet(true); openItem(id); } break;
     case 'del': {
       const it = S.data.items.find(i => i.id === id);
       if (!confirm(`Delete “${it.title}”? Its photos and bills are moved to a Removed folder in OneDrive.`)) return;
-      if (await mutate(d => { d.items = d.items.filter(i => i.id !== id); })) { it.photos.forEach(p => removeFile('Photos', p)); it.docs.forEach(p => removeFile('Bills', p)); closeSheet(); toast('Deleted'); }
+      if (await mutateFast(d => { d.items = d.items.filter(i => i.id !== id); })) { it.photos.forEach(p => removeFile('Photos', p)); it.docs.forEach(p => removeFile('Bills', p)); closeSheet(); toast('Deleted'); }
       break;
     }
     case 'owner-add': openOwner(null); break;
     case 'owner-edit': openOwner(id); break;
     case 'owner-save': {
       const name = $('#oname', sheetEl).value.trim(), color = sheetEl.dataset.color; if (!name) return toast('Enter a name.');
-      if (await mutate(d => { const o = d.owners.find(x => x.id === id); if (o) Object.assign(o, { name, color }); else d.owners.push({ id, name, color }); })) closeSheet();
+      if (await mutateFast(d => { const o = d.owners.find(x => x.id === id); if (o) Object.assign(o, { name, color }); else d.owners.push({ id, name, color }); })) closeSheet();
       break;
     }
-    case 'owner-del': if (confirm('Remove this person?') && await mutate(d => { d.owners = d.owners.filter(o => o.id !== id); })) closeSheet(); break;
+    case 'owner-del': if (confirm('Remove this person?') && await mutateFast(d => { d.owners = d.owners.filter(o => o.id !== id); })) closeSheet(); break;
     case 'zpay': {
       const zd = zakatDate();
       openSheet('Record zakat paid', `
@@ -1315,10 +1324,10 @@ async function onClick(e) {
     case 'zpay-save': {
       const amount = num($('#za', sheetEl).value); if (!(amount > 0)) return toast('Enter the amount.');
       const rec = { id: uuid(), ownerId: $('#zo', sheetEl).value, amount, currency: $('#zc', sheetEl).value, date: $('#zdt', sheetEl).value || todayStr(), note: $('#zn', sheetEl).value.trim() };
-      if (await mutate(d => { d.zakatLog.push(rec); })) closeSheet();
+      if (await mutateFast(d => { d.zakatLog.push(rec); })) closeSheet();
       break;
     }
-    case 'zdel': if (confirm('Delete this zakat record?')) mutate(d => { d.zakatLog = d.zakatLog.filter(z => z.id !== id); }); break;
+    case 'zdel': if (confirm('Delete this zakat record?')) mutateFast(d => { d.zakatLog = d.zakatLog.filter(z => z.id !== id); }); break;
     case 'sync': pull(true); break;
     case 'change-folder': { openSheet('Choose folder', '<div id="fb2"></div>'); folderBrowser($('#fb2', sheetEl)); break; }
     case 'csv': exportCSV(); break;
@@ -1341,18 +1350,18 @@ async function finishSetup(btn) {
 async function onChange(e) {
   const t = e.target;
   if (t.id === 'sort') { S.f.sort = t.value; ls.set('mg.sort', t.value); render(); return; }
-  if (t.id === 'zdate') { mutate(d => { d.settings.zakatDate = t.value; }); return; }
+  if (t.id === 'zdate') { mutateFast(d => { d.settings.zakatDate = t.value; }); return; }
   if (t.id === 'calK' || t.id === 'calU') {
     const v = num(t.value), r = S.rates; if (!(v > 0) || !r) return;
     const base = t.id === 'calK' ? r.inr / OZ * 0.916 : r.aed / OZ * DJG[22];
     if (!base) return toast('Gold price not loaded yet — try again in a moment.');
     const p = Math.round((v / base - 1) * 10000) / 100;
     if (p < -5 || p > 40) return toast('That rate looks far from today’s gold price. Please check it.');
-    mutate(d => { if (t.id === 'calK') { d.settings.keralaPrem = p; d.settings.keralaSetAt = todayStr(); } else { d.settings.uaePrem = p; d.settings.uaeSetAt = todayStr(); } })
+    mutateFast(d => { if (t.id === 'calK') { d.settings.keralaPrem = p; d.settings.keralaSetAt = todayStr(); } else { d.settings.uaePrem = p; d.settings.uaeSetAt = todayStr(); } })
       .then(ok => ok && toast(`${t.id === 'calK' ? 'Kerala' : 'UAE'} rate matched ✓`));
     return;
   }
-  if (t.id === 'prem') { const v = num(t.value); mutate(d => { d.settings.premium[d.settings.currency] = isFinite(v) ? v : 0; }); return; }
+  if (t.id === 'prem') { const v = num(t.value); mutateFast(d => { d.settings.premium[d.settings.currency] = isFinite(v) ? v : 0; }); return; }
   if (t.name === 'karat' || t.name === 'type') return;
   if (t.matches('[data-scan]') && t.files?.[0]) { scanBill(t.files[0]); return; }
   if (t.matches('[data-fp],[data-fd]') && t.files?.length) {
