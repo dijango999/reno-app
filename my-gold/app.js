@@ -1144,7 +1144,7 @@ async function onClick(e) {
   const th = t.closest("[data-th]"); if (th) { ls.set("mg.theme", th.dataset.th); applyTheme(); render(); return; }
   const zc = t.closest('[data-zc]'); if (zc) { mutate(d => { d.settings.zakatCombine = zc.dataset.zc === '1'; }); return; }
   const zm = t.closest('[data-zm]'); if (zm) { mutate(d => { d.settings.zakatMethod = zm.dataset.zm; }); return; }
-  const cu = t.closest('[data-cur]'); if (cu) { S.setupCur = cu.dataset.cur; render(); return; }
+  const cu = t.closest('[data-cur]'); if (cu) { collectSetup(); S.setupCur = cu.dataset.cur; render(); return; }
 
   const a = t.closest('[data-a]'); if (!a) return;
   const id = a.dataset.id;
@@ -1277,6 +1277,7 @@ async function onChange(e) {
 }
 let qTimer;
 function onInput(e) {
+  if (e.target.dataset?.setup != null) { S.setupNames[+e.target.dataset.setup] = e.target.value; return; }
   if (e.target.id === 'q') { clearTimeout(qTimer); const v = e.target.value; qTimer = setTimeout(() => { S.f.q = v; const pos = e.target.selectionStart; render(); const q = $('#q'); if (q) { q.focus(); q.setSelectionRange(pos, pos); } }, 200); }
 }
 document.addEventListener('click', e => { if (!e.target.closest('.sheet')) onClick(e); });
