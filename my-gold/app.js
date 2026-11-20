@@ -228,7 +228,7 @@ async function loadRemote() {
 }
 function normalize(d) {
   d.owners ||= []; d.items ||= []; d.zakatLog ||= [];
-  d.settings = { currency: 'AED', theme: 'auto', zakatMethod: 'majority', zakatDate: '', premium: { AED: 0, INR: 0, USD: 0 }, ...(d.settings || {}) };
+  d.settings = { currency: 'AED', theme: 'auto', zakatMethod: 'majority', zakatDate: '', premium: { AED: 0, INR: 0, USD: 0 }, uaePrem: 1.5, keralaPrem: 16, ...(d.settings || {}) };
   d.settings.premium = { AED: 0, INR: 0, USD: 0, ...(d.settings.premium || {}) };
   for (const it of d.items) { it.photos ||= []; it.docs ||= []; it.status ||= 'held'; it.zakat ||= 'auto'; }
   return d;
@@ -464,14 +464,33 @@ const netWeight = it => Math.max(0, (+it.weight || 0) - (it.type === 'jewellery'
 const pureGrams = it => netWeight(it) * purityOf(it);
 const cur = () => S.data?.settings?.currency || 'AED';
 /** Price of one gram of pure gold now, in currency c (with the local adjustment from Settings). */
-function pureGramNow(c = cur()) {
-  const r = S.rates; if (!r) return null;
-  const perOz = c === 'USD' ? r.usd : c === 'AED' ? r.aed : r.inr;
-  if (!perOz) return null;
-  return perOz / OZ * (1 + (+S.data?.settings?.premium?.[c] || 0) / 100);
+/* Two real markets:
+ *   UAE   — Dubai Gold & Jewellery Group style: 24K = spot in AED + small premium; 22K/21K/18K use DJG's own ratios.
+ *   Kerala — board rate: spot in INR + premium (import duty etc., set in Settings from the day's board rate); karat = purity share.
+ * GST, VAT and making charges are not included, same as the published rates. */
+const DJG = { 24: 1, 22: 0.9257, 21: 0.888, 18: 0.761, 14: 0.594 };
+const st = () => S.data?.settings || {};
+function uae24() { const r = S.rates; return r?.aed ? r.aed / OZ * (1 + (+st().uaePrem || 0) / 100) : null; }
+function keralaPure() { const r = S.rates; return r?.inr ? r.inr / OZ * (1 + (+st().keralaPrem || 0) / 100) : null; }
+/** Market price of one gram: AED → UAE rate, INR → Kerala rate, USD → international spot. */
+function rateFor(karat, purity, c = cur()) {
+  if (c === 'AED') { const b = uae24(); return b == null ? null : b * (DJG[+karat] ?? purity / 0.999); }
+  if (c === 'INR') { const b = keralaPure(); return b == null ? null : b * purity; }
+  return S.rates?.usd ? S.rates.usd / OZ * purity : null;
 }
-const gramRate = (purity, c = cur()) => { const p = pureGramNow(c); return p == null ? null : p * purity; };
-const valueNow = (it, c = cur()) => { const p = pureGramNow(c); return p == null ? null : pureGrams(it) * p; };
+const itemRate = (it, c = cur()) => rateFor(it.karat, purityOf(it), c);
+const marketName = (c = cur()) => c === 'AED' ? 'UAE' : c === 'INR' ? 'Kerala' : 'International';
+const otherCur = (c = cur()) => c === 'INR' ? 'AED' : 'INR';
+const pureGramNow = (c = cur()) => rateFor(24, 0.999, c) == null ? null : (c === 'AED' ? uae24() : c === 'INR' ? keralaPure() : S.rates.usd / OZ);
+const gramRate = (purity, c = cur(), karat = 0) => rateFor(karat, purity, c);
+const valueNow = (it, c = cur()) => { const p = itemRate(it, c); return p == null ? null : netWeight(it) * p; };
+/** Total value in the other market, also shown in the display currency (so UAE and Kerala can be compared). */
+function compareMarkets(list) {
+  const c = cur(), o = otherCur(c);
+  const here = list.reduce((a, i) => a + (valueNow(i, c) || 0), 0), there = list.reduce((a, i) => a + (valueNow(i, o) || 0), 0);
+  const thereHere = convert(there, o, c);
+  return { c, o, here, there, thereHere, diffPct: here && thereHere != null ? (thereHere - here) / here * 100 : null };
+}
 /** Converts an amount between currencies using the rates of a given day (or today's). */
 function convert(amount, from, to, rs = S.rates) {
   if (from === to) return amount;
@@ -619,11 +638,15 @@ function setupView() {
 
 /* ---------------- Home ---------------- */
 function ratesStrip() {
-  const r = S.rates, c = cur();
-  const chips = KARATS.slice(0, 4).map(k => `<div class="rate"><div class="k">${k.label} · 1 g</div><div class="v num">${money(gramRate(k.p, c), c)}</div></div>`).join('');
+  const r = S.rates, c = cur(), s = st();
+  const fx = r?.aed && r?.inr ? r.inr / r.aed : null;
+  const uae = [24, 22, 21, 18].map(k => `<div class="rate"><div class="k">${k}K · 1 g</div><div class="v num">${money(rateFor(k, KARATS.find(x => x.k === k).p, 'AED'), 'AED')}</div></div>`).join('');
+  const ker = [[22, '22K · 1 g', 1], [22, '1 pavan · 8 g', 8], [24, '24K · 1 g', 1], [18, '18K · 1 g', 1]].map(([k, l, g]) =>
+    `<div class="rate"><div class="k">${l}</div><div class="v num">${money(rateFor(k, KARATS.find(x => x.k === k).p, 'INR') * g, 'INR', 0)}</div></div>`).join('');
   const when = r ? (r.quoteAt && /T/.test(r.quoteAt) ? new Date(r.quoteAt).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : timeStr(r.at)) : '';
-  return `<div class="rates">${chips}<div class="rate"><div class="k">1 troy oz</div><div class="v num">${money(r ? (c === 'USD' ? r.usd : c === 'AED' ? r.aed : r.inr) : null, c, 0)}</div></div></div>
-    <div class="small faint" style="margin-top:6px">${r ? `International spot · ${esc(when)}${+S.data.settings.premium[c] ? ` · +${S.data.settings.premium[c]}% local adjustment` : ''}` : 'Getting today’s gold price…'}${S.ratesErr ? ` · <span style="color:var(--bad)">${esc(S.ratesErr)}</span>` : ''}</div>`;
+  return `<div class="mkt"><span>🇦🇪 UAE rate</span><span class="faint">AED per gram</span></div><div class="rates">${uae}</div>
+    <div class="mkt"><span>🇮🇳 Kerala rate</span><span class="faint">${s.keralaSetAt ? 'matched to board rate ' + shortDate(s.keralaSetAt) : '<button class="linkbtn" data-a="calib" style="padding:0;font-size:12px">estimated · set today’s rate</button>'}</span></div><div class="rates">${ker}</div>
+    <div class="small faint" style="margin-top:6px">${r ? `Live · ${esc(when)}${fx ? ` · 1 AED = ₹${fx.toFixed(2)}` : ''} · before VAT/GST &amp; making` : 'Getting today’s gold price…'}${S.ratesErr ? ` · <span style="color:var(--bad)">${esc(S.ratesErr)}</span>` : ''}</div>`;
 }
 function homeView() {
   const all = held(), t = totals(all), c = cur();
@@ -642,7 +665,8 @@ function homeView() {
     <div class="hero">
       <div class="lbl">Family gold · today</div>
       <div class="big num">${money(t.value, c, 0)}</div>
-      <div class="sub num">${grams(t.gross, 2)} · ${grams(t.pure, 2)} pure gold · ${t.count} piece${t.count === 1 ? '' : 's'}</div>
+      <div class="sub num">${grams(t.gross, 2)} · ${grams(t.pure, 2)} pure gold · ${t.count} piece${t.count === 1 ? '' : 's'} · at ${marketName(c)} rate</div>
+      ${(() => { const m = compareMarkets(all); return m.there ? `<div class="sub num" style="margin-top:6px">${m.o === 'INR' ? '🇮🇳 If sold in Kerala' : '🇦🇪 At UAE rate'}: <b>${money(m.there, m.o, 0)}</b>${m.thereHere != null ? ` ≈ ${money(m.thereHere, c, 0)} <span class="${m.diffPct >= 0 ? 'up' : 'down'}">(${pct(m.diffPct)})</span>` : ''}</div>` : ''; })()}
       <div class="stats">
         <div class="stat"><div class="k">Paid</div><div class="v num">${t.costKnown ? moneyK(t.cost, c) : '–'}</div></div>
         <div class="stat"><div class="k">Gain</div><div class="v num ${t.gain >= 0 ? 'up' : 'down'}">${t.costKnown ? (t.gain >= 0 ? '+' : '') + moneyK(t.gain, c) : '–'}</div></div>
@@ -655,6 +679,7 @@ function homeView() {
         <div class="ph"><span class="av" style="--c:${o.color}">${esc(initials(o.name))}</span><span class="name">${esc(o.name)}</span>
         <span style="flex:1"></span>${ot.costKnown ? `<span class="chip ${ot.gain >= 0 ? 'good' : 'bad'}">${pct(ot.gainPct)}</span>` : ''}</div>
         <div class="val num">${money(ot.value, c, 0)}</div>
+        ${(() => { const m = compareMarkets(all.filter(i => i.ownerId === o.id)); return m.there ? `<div class="small muted num">${m.o === 'INR' ? 'Kerala' : 'UAE'}: ${money(m.there, m.o, 0)}</div>` : ''; })()}
         <div class="meta num"><span>${grams(ot.gross, 2)}</span><span>·</span><span>${ot.count} piece${ot.count === 1 ? '' : 's'}</span><span>·</span><span>${t.value ? Math.round(ot.value / t.value * 100) : 0}% of family</span></div>
       </button>`; }).join('')}</div>
     <div class="grid2">
@@ -768,9 +793,14 @@ function settingsView() {
     </div>
     <div class="card"><h3>Show amounts in</h3>
       <div class="seg">${Object.keys(CURS).map(c => `<button data-setcur="${c}" class="${s.currency === c ? 'on' : ''}">${c}</button>`).join('')}</div>
-      <div class="field"><span>Local price adjustment for ${s.currency} (%)</span>
-        <input id="prem" type="number" inputmode="decimal" step="0.1" value="${+s.premium[s.currency] || 0}">
-        <span class="hint">Values use the international spot price. Add a percentage if you want to match your local jeweller's rate (India's rates include import duty and GST, for example).</span></div>
+      <div class="small faint" style="margin-top:8px">AED values use the UAE rate, INR values the Kerala rate, USD the international price.</div>
+    </div>
+    <div class="card" id="calibCard"><h3>Market rates</h3>
+      <div class="small muted">Both follow the live gold price. Type today's published 22K rate once (from the newspaper, Malabar/Joyalukkas board or Gulf News) and the app matches it from then on.</div>
+      <div class="field"><span>🇮🇳 Kerala 22K board rate today (₹ per gram)</span><input id="calK" type="number" inputmode="decimal" placeholder="${Math.round(rateFor(22, 0.916, 'INR') || 0) || 'e.g. 13675'}">
+        <span class="hint">Now ${(+s.keralaPrem || 0).toFixed(2)}% above the international price${s.keralaSetAt ? ' · set ' + shortDate(s.keralaSetAt) : ' (estimate)'} — mostly India's import duty.</span></div>
+      <div class="field"><span>🇦🇪 UAE 22K rate today (AED per gram)</span><input id="calU" type="number" inputmode="decimal" placeholder="${(rateFor(22, 0.916, 'AED') || 0).toFixed(2)}">
+        <span class="hint">Now ${(+s.uaePrem || 0).toFixed(2)}% above the international price${s.uaeSetAt ? ' · set ' + shortDate(s.uaeSetAt) : ' (estimate)'}.</span></div>
     </div>
     <div class="card"><h3>Appearance</h3>
       <div class="seg">${[['light', '☀️ Light'], ['dark', '🌙 Dark'], ['auto', 'Auto']].map(([k, l]) => `<button data-th="${k}" class="${(ls.get('mg.theme') || 'auto') === k ? 'on' : ''}">${l}</button>`).join('')}</div>
@@ -833,7 +863,7 @@ function openItem(id) {
       ${it.status !== 'held' ? `<span class="chip bad">${it.status === 'sold' ? 'Sold' : 'Gifted'} ${shortDate(it.soldDate)}</span>` : ''}
     </div>
     <div class="split" style="margin-top:12px">
-      <div class="box"><div class="k">Worth today</div><div class="v num">${money(v, c, 0)}</div></div>
+      <div class="box"><div class="k">Worth today · ${marketName(c)}</div><div class="v num">${money(v, c, 0)}</div>${(() => { const o = otherCur(c), ov = valueNow(it, o); return ov != null ? `<div class="small muted num">${o === 'INR' ? 'Kerala' : 'UAE'}: ${money(ov, o, 0)}</div>` : ''; })()}</div>
       <div class="box"><div class="k">You paid</div><div class="v num">${cst != null ? money(cst, c, 0) : '–'}</div>${cst != null && it.currency && it.currency !== c ? `<div class="small muted num">${money(+it.pricePaid, it.currency, 0)}</div>` : ''}</div>
       <div class="box"><div class="k">Gain</div><div class="v num ${gain >= 0 ? 'up' : 'down'}">${gain != null ? (gain >= 0 ? '+' : '') + money(gain, c, 0) : '–'}</div>${gain != null && cst ? `<div class="small num ${gain >= 0 ? 'up' : 'down'}">${pct(gain / cst * 100)}</div>` : ''}</div>
       <div class="box"><div class="k">Gold value on purchase day</div><div class="v num">${then != null ? money(then, c, 0) : '–'}</div>${then != null && cst ? `<div class="small muted num">Paid ${pct((cst - then) / then * 100)} over gold value</div>` : ''}</div>
@@ -848,7 +878,8 @@ function openItem(id) {
       <dt>Pure gold</dt><dd class="num">${grams(pureGrams(it))}</dd>
       ${+it.billRate ? `<dt>Rate on bill</dt><dd class="num">${money(+it.billRate, it.currency)}/g</dd>` : ''}
       ${rateThen ? `<dt>Market rate then</dt><dd class="num">${money(rateThen / OZ * purityOf(it), c)}/g</dd>` : ''}
-      <dt>Market rate today</dt><dd class="num">${money(gramRate(purityOf(it), c), c)}/g</dd>
+      <dt>UAE rate today</dt><dd class="num">${money(itemRate(it, 'AED'), 'AED')}/g</dd>
+      <dt>Kerala rate today</dt><dd class="num">${money(itemRate(it, 'INR'), 'INR')}/g</dd>
       ${+it.making ? `<dt>Making charges</dt><dd class="num">${money(+it.making, it.currency)}</dd>` : ''}
       ${+it.vat ? `<dt>VAT / GST</dt><dd class="num">${money(+it.vat, it.currency)}</dd>` : ''}
       <dt>Zakat</dt><dd style="font-weight:500">${esc(zr.why)}</dd>
@@ -1066,10 +1097,10 @@ function download(name, text, type) {
 }
 function exportCSV() {
   const c = cur(), q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const head = ['Owner', 'Name', 'Type', 'Purity', 'Weight g', 'Stones g', 'Pure gold g', 'Bought on', 'Shop', 'Bill no.', 'Paid', 'Paid currency', `Paid in ${c}`, `Value today ${c}`, `Gain ${c}`, 'Zakat', 'Status'];
+  const head = ['Owner', 'Name', 'Type', 'Purity', 'Weight g', 'Stones g', 'Pure gold g', 'Bought on', 'Shop', 'Bill no.', 'Paid', 'Paid currency', `Paid in ${c}`, `Value today ${c}`, 'UAE value AED', 'Kerala value INR', `Gain ${c}`, 'Zakat', 'Status'];
   const rows = S.data.items.map(i => { const v = valueNow(i), cs = costIn(i);
     return [ownerById(i.ownerId)?.name, i.title, TYPES[i.type]?.label, karatLabel(i), i.weight, i.stoneWeight || 0, pureGrams(i).toFixed(3), i.purchaseDate, i.shop, i.invoiceNo,
-      i.pricePaid || '', i.currency, cs != null ? cs.toFixed(2) : '', v != null ? v.toFixed(2) : '', v != null && cs ? (v - cs).toFixed(2) : '', zakatRule(i).due ? 'Zakatable' : 'Exempt', i.status]; });
+      i.pricePaid || '', i.currency, cs != null ? cs.toFixed(2) : '', v != null ? v.toFixed(2) : '', (valueNow(i, 'AED') || 0).toFixed(2), (valueNow(i, 'INR') || 0).toFixed(2), v != null && cs ? (v - cs).toFixed(2) : '', zakatRule(i).due ? 'Zakatable' : 'Exempt', i.status]; });
   download(`My Gold ${todayStr()}.csv`, [head, ...rows].map(r => r.map(q).join(',')).join('\n'), 'text/csv');
 }
 
@@ -1102,6 +1133,7 @@ async function onClick(e) {
   const id = a.dataset.id;
   switch (a.dataset.a) {
     case 'close': closeSheet(); break;
+    case 'calib': S.tab = 'settings'; ls.set('mg.tab', 'settings'); render(); setTimeout(() => { $('#calibCard')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); $('#calK')?.focus(); }, 50); break;
     case 'theme-toggle': ls.set('mg.theme', isDark() ? 'light' : 'dark'); applyTheme(); render(); break;
     case 'lock-settings': lockSettingsSheet(); break;
     case 'signin': signIn(false); break;
@@ -1194,6 +1226,16 @@ async function onChange(e) {
   const t = e.target;
   if (t.id === 'sort') { S.f.sort = t.value; ls.set('mg.sort', t.value); render(); return; }
   if (t.id === 'zdate') { mutate(d => { d.settings.zakatDate = t.value; }); return; }
+  if (t.id === 'calK' || t.id === 'calU') {
+    const v = num(t.value), r = S.rates; if (!(v > 0) || !r) return;
+    const base = t.id === 'calK' ? r.inr / OZ * 0.916 : r.aed / OZ * DJG[22];
+    if (!base) return toast('Gold price not loaded yet — try again in a moment.');
+    const p = Math.round((v / base - 1) * 10000) / 100;
+    if (p < -5 || p > 40) return toast('That rate looks far from today’s gold price. Please check it.');
+    mutate(d => { if (t.id === 'calK') { d.settings.keralaPrem = p; d.settings.keralaSetAt = todayStr(); } else { d.settings.uaePrem = p; d.settings.uaeSetAt = todayStr(); } })
+      .then(ok => ok && toast(`${t.id === 'calK' ? 'Kerala' : 'UAE'} rate matched ✓`));
+    return;
+  }
   if (t.id === 'prem') { const v = num(t.value); mutate(d => { d.settings.premium[d.settings.currency] = isFinite(v) ? v : 0; }); return; }
   if (t.name === 'karat' || t.name === 'type') return;
   if (t.matches('[data-fp],[data-fd]') && t.files?.length) {
