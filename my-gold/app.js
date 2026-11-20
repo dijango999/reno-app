@@ -159,7 +159,7 @@ function trySilent() {
   S.phase = 'loading'; render(); signIn(false, true); return true;
 }
 function signOut() {
-  for (const k of ['mg.account', 'mg.tokens', 'mg.cache', 'mg.etag', 'mg.loc', 'mg.demo', 'mg.demoData']) ls.del(k);
+  for (const k of ['mg.lock', 'mg.lockFails', 'mg.lockUntil', 'mg.account', 'mg.tokens', 'mg.cache', 'mg.etag', 'mg.loc', 'mg.demo', 'mg.demoData']) ls.del(k);
   tokens = null; LOC = null; S.account = null; S.demo = false; S.data = null; S.etag = null;
   S.phase = 'welcome'; closeSheet(); render();
 }
@@ -546,7 +546,7 @@ function toast(msg) {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => t.remove(), 3600);
 }
 function applyTheme() {
-  const t = S.data?.settings?.theme || ls.get('mg.theme') || 'auto';
+  const t = ls.get('mg.theme') || 'auto';
   if (t === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.dataset.theme = t;
 }
 const ICON = {
@@ -555,6 +555,8 @@ const ICON = {
   zakat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/><path d="m17 4 .7 1.6 1.8.2-1.3 1.2.4 1.8-1.6-.9-1.6.9.4-1.8-1.3-1.2 1.8-.2z"/></svg>',
   settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
 };
+const isDark = () => { const t = ls.get('mg.theme') || 'auto'; return t === 'dark' || (t === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches); };
+matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => { if (S.phase === 'ready') render(); });
 const TABS = [['home', 'Home'], ['items', 'My Gold'], ['zakat', 'Zakat'], ['settings', 'Settings']];
 
 function render() {
@@ -568,6 +570,7 @@ function render() {
   const body = S.tab === 'items' ? itemsView() : S.tab === 'zakat' ? zakatView() : S.tab === 'settings' ? settingsView() : homeView();
   app.innerHTML = `
     <header class="top"><div class="topbar"><h1>${title}</h1>
+      <button class="iconbtn" data-a="theme-toggle" title="Light / dark">${isDark() ? '☀️' : '🌙'}</button>
       ${S.tab === 'home' ? `<button class="iconbtn" data-a="refresh" title="Refresh prices">${S.ratesBusy ? '<span class="spin" style="width:16px;height:16px"></span>' : '↻'}</button>` : ''}
     </div><div class="sync" id="syncline">${syncLine()}</div></header>
     <main>${body}</main>
@@ -770,8 +773,12 @@ function settingsView() {
         <span class="hint">Values use the international spot price. Add a percentage if you want to match your local jeweller's rate (India's rates include import duty and GST, for example).</span></div>
     </div>
     <div class="card"><h3>Appearance</h3>
-      <div class="seg">${[['auto', 'Automatic'], ['light', 'Light'], ['dark', 'Dark']].map(([k, l]) => `<button data-theme="${k}" class="${(s.theme || 'auto') === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <div class="seg">${[['light', '☀️ Light'], ['dark', '🌙 Dark'], ['auto', 'Auto']].map(([k, l]) => `<button data-th="${k}" class="${(ls.get('mg.theme') || 'auto') === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <div class="small faint" style="margin-top:8px">Auto follows your iPhone or Mac light/dark setting. Tap ☀️/🌙 at the top of any screen to switch quickly.</div>
     </div>
+    <div class="card"><h3>Security</h3>
+      <button class="btn sec" data-a="lock-settings">🔒 Passcode &amp; ${esc(bioName())} · ${getLock() ? 'On' : 'Off'}</button>
+      <div class="small faint" style="margin-top:8px">Locks My Gold on this device. Each phone sets its own passcode.</div></div>
     <div class="card"><h3>Storage</h3>
       ${S.demo ? `<div class="small muted">You are looking at sample data on this device. Sign in to keep your real gold record in OneDrive.</div><button class="btn" data-a="leave-demo" style="margin-top:12px">Sign in with Microsoft</button>` : `
       <dl class="kv"><dt>Account</dt><dd>${esc(S.account || '–')}</dd><dt>Folder</dt><dd>${esc(locFull())}</dd></dl>
@@ -1086,7 +1093,7 @@ async function onClick(e) {
   const oc = t.closest('[data-oc]'); if (oc) { sheetEl.dataset.color = oc.dataset.oc; sheetEl.querySelectorAll('[data-oc]').forEach(b => { b.classList.toggle('on', b === oc); b.style.borderWidth = b === oc ? '3px' : '1px'; }); return; }
   // settings toggles
   const sc = t.closest('[data-setcur]'); if (sc) { mutate(d => { d.settings.currency = sc.dataset.setcur; }); return; }
-  const th = t.closest('[data-theme]'); if (th) { ls.set('mg.theme', th.dataset.theme); mutate(d => { d.settings.theme = th.dataset.theme; }); return; }
+  const th = t.closest("[data-th]"); if (th) { ls.set("mg.theme", th.dataset.th); applyTheme(); render(); return; }
   const zc = t.closest('[data-zc]'); if (zc) { mutate(d => { d.settings.zakatCombine = zc.dataset.zc === '1'; }); return; }
   const zm = t.closest('[data-zm]'); if (zm) { mutate(d => { d.settings.zakatMethod = zm.dataset.zm; }); return; }
   const cu = t.closest('[data-cur]'); if (cu) { S.setupCur = cu.dataset.cur; render(); return; }
@@ -1095,6 +1102,8 @@ async function onClick(e) {
   const id = a.dataset.id;
   switch (a.dataset.a) {
     case 'close': closeSheet(); break;
+    case 'theme-toggle': ls.set('mg.theme', isDark() ? 'light' : 'dark'); applyTheme(); render(); break;
+    case 'lock-settings': lockSettingsSheet(); break;
     case 'signin': signIn(false); break;
     case 'signin-other': signIn(true); break;
     case 'demo': {
@@ -1215,9 +1224,136 @@ document.addEventListener('click', e => { if (!e.target.closest('.sheet')) onCli
 document.addEventListener('change', e => { if (!e.target.closest('.sheet')) onChange(e); });
 document.addEventListener('input', e => { if (!e.target.closest('.sheet')) onInput(e); });
 
+/* ---------------- app lock: passcode + Face ID / Touch ID ----------------
+ * Same lock as Reno App. The passcode is stored only as a salted PBKDF2 hash on this device.
+ * Face ID / Touch ID uses the phone's own biometric check (WebAuthn platform authenticator);
+ * the face or fingerprint never leaves the device. Forgot the passcode? Sign out and sign in
+ * with Microsoft again — that clears the lock.
+ */
+const LOCK_KEY = 'mg.lock';
+const getLock = () => lsJSON(LOCK_KEY);
+const setLock = v => v ? ls.set(LOCK_KEY, JSON.stringify(v)) : ls.del(LOCK_KEY);
+const fromB64url = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4)), c => c.charCodeAt(0));
+async function hashPin(pin, saltB64) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: fromB64url(saltB64), iterations: 150000 }, key, 256);
+  return b64url(bits);
+}
+async function bioAvailable() {
+  try { return !!(window.PublicKeyCredential && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()); } catch { return false; }
+}
+const bioName = () => /iPhone|iPad/.test(navigator.userAgent) ? 'Face ID' : /Macintosh/.test(navigator.userAgent) ? 'Touch ID' : 'fingerprint / face';
+async function bioRegister() {
+  const rnd = n => crypto.getRandomValues(new Uint8Array(n));
+  const cred = await navigator.credentials.create({ publicKey: {
+    challenge: rnd(32), rp: { name: 'My Gold', id: location.hostname },
+    user: { id: rnd(16), name: S.account || 'My Gold', displayName: 'My Gold lock' },
+    pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+    authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'discouraged' },
+    timeout: 60000 } });
+  return b64url(cred.rawId);
+}
+async function bioCheck(id) {
+  const a = await navigator.credentials.get({ publicKey: {
+    challenge: crypto.getRandomValues(new Uint8Array(32)),
+    allowCredentials: [{ type: 'public-key', id: fromB64url(id), transports: ['internal', 'hybrid'] }],
+    userVerification: 'required', timeout: 60000 } });
+  const flags = new Uint8Array(a.response.authenticatorData)[32];
+  return !!(flags & 0x04);                         // the device confirmed it was really you
+}
+let locked = false, hiddenAt = 0, pinBuf = '', failCount = +(ls.get('mg.lockFails') || 0), lockUntil = +(ls.get('mg.lockUntil') || 0);
+function showLock() {
+  const L = getLock(); if (!L || locked) return;
+  locked = true; pinBuf = '';
+  document.documentElement.classList.add('is-locked');
+  const el = document.createElement('div'); el.id = 'lock'; el.className = 'lock';
+  el.innerHTML = `<img class="logo" src="icons/icon-192.png" alt="">
+    <h2>My Gold is locked</h2><p id="lockMsg">Enter your passcode</p>
+    <div class="pindots" id="pinDots">${'<i></i>'.repeat(L.len)}</div>
+    <div class="keypad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => `<button data-k="${n}">${n}</button>`).join('')}
+      ${L.bio ? `<button data-k="bio" aria-label="Unlock with ${bioName()}">${bioName() === 'Face ID' ? '🙂' : '👆'}</button>` : '<span></span>'}
+      <button data-k="0">0</button><button data-k="del" aria-label="Delete">⌫</button></div>
+    ${L.bio ? `<button class="linkbtn" data-k="bio">Unlock with ${bioName()}</button>` : ''}
+    <button class="linkbtn" data-k="forgot" style="color:#A8987A">Forgot passcode?</button>`;
+  document.body.appendChild(el);
+  el.addEventListener('click', onLockKey);
+  if (L.bio) setTimeout(() => tryBio(), 350);
+}
+function hideLock() {
+  locked = false; document.getElementById('lock')?.remove(); document.documentElement.classList.remove('is-locked');
+  failCount = 0; ls.set('mg.lockFails', '0');
+}
+async function tryBio() {
+  const L = getLock(); if (!L?.bio || !locked) return;
+  try { if (await bioCheck(L.bio)) hideLock(); }
+  catch { const m = $('#lockMsg'); if (m) m.textContent = 'Enter your passcode'; }
+}
+function drawDots(err) {
+  const d = $('#pinDots'); if (!d) return;
+  d.querySelectorAll('i').forEach((x, i) => x.classList.toggle('on', i < pinBuf.length));
+  d.classList.toggle('shake', !!err);
+}
+async function onLockKey(e) {
+  const b = e.target.closest('[data-k]'); if (!b) return;
+  const k = b.dataset.k, L = getLock(), msg = $('#lockMsg');
+  if (k === 'bio') return tryBio();
+  if (k === 'forgot') {
+    if (confirm('Sign out of My Gold on this device? Your data stays safe in OneDrive. After signing in with Microsoft again you can set a new passcode.')) { setLock(null); hideLock(); signOut(); }
+    return;
+  }
+  if (Date.now() < lockUntil) { msg.textContent = `Too many tries. Wait ${Math.ceil((lockUntil - Date.now()) / 1000)} seconds.`; return; }
+  if (k === 'del') { pinBuf = pinBuf.slice(0, -1); drawDots(); return; }
+  if (pinBuf.length >= L.len) return;
+  pinBuf += k; drawDots();
+  if (pinBuf.length < L.len) return;
+  if ((await hashPin(pinBuf, L.salt)) === L.hash) { hideLock(); return; }
+  failCount++; ls.set('mg.lockFails', String(failCount));
+  if (failCount >= 5) { lockUntil = Date.now() + 30000 * Math.pow(2, Math.min(failCount - 5, 5)); ls.set('mg.lockUntil', String(lockUntil)); }
+  msg.textContent = failCount >= 5 ? 'Too many tries. Please wait a moment.' : 'Wrong passcode. Try again.';
+  drawDots(true); setTimeout(() => { pinBuf = ''; drawDots(); }, 450);
+}
+document.addEventListener('visibilitychange', () => {
+  const L = getLock(); if (!L || S.phase === 'welcome' || S.phase === 'needsignin') return;
+  if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); if (!L.after) showLock(); }   // hides your gold in the app switcher
+  else if (Date.now() - hiddenAt >= (L.after || 0) * 1000) showLock();
+});
+async function lockSettingsSheet() {
+  const L = getLock(), canBio = await bioAvailable();
+  openSheet('Passcode & ' + bioName(), `
+    <div class="card"><h3>App lock</h3><dl class="kv"><dt>Status</dt><dd>${L ? '🔒 On' : 'Off'}</dd>
+      ${L ? `<dt>${esc(bioName())}</dt><dd>${L.bio ? 'On' : 'Off'}</dd>` : ''}</dl>
+      <div class="small faint" style="margin-top:8px">The lock is for this ${/iPhone|iPad/.test(navigator.userAgent) ? 'iPhone' : 'device'} only. Each phone sets its own passcode.</div></div>
+    <div class="card"><h3>${L ? 'Change passcode' : 'Turn on with a passcode'}</h3>
+      <div class="field"><span>New passcode (4–6 digits)</span><input id="pin1" type="password" inputmode="numeric" autocomplete="new-password" maxlength="6"></div>
+      <div class="field"><span>Type it again</span><input id="pin2" type="password" inputmode="numeric" autocomplete="new-password" maxlength="6"></div>
+      ${canBio ? `<label style="display:flex;gap:10px;align-items:center;font-weight:600;margin-top:12px"><input type="checkbox" id="pinBio" ${!L || L.bio ? 'checked' : ''} style="width:22px;height:22px;accent-color:var(--gold)"> Also unlock with ${esc(bioName())}</label>` : `<div class="small faint" style="margin-top:10px">${esc(bioName())} isn't available in this browser; the passcode will be used.</div>`}
+      <button class="btn" id="pinSave" style="margin-top:14px">${L ? 'Save new passcode' : 'Turn on lock'}</button>
+      <div class="small" id="pinMsg" style="margin-top:8px;color:var(--bad)"></div></div>
+    ${L ? `<div class="card"><h3>Lock again after</h3><div class="seg" id="lockAfter">${[[0, 'Right away'], [60, '1 min'], [300, '5 min']].map(([v, t]) => `<button type="button" data-v="${v}" class="${(L.after || 0) === v ? 'on' : ''}">${t}</button>`).join('')}</div></div>
+      <button class="btn danger" id="lockOff" style="margin-top:14px">Turn off lock</button>` : ''}`);
+  $('#pinSave', sheetEl).onclick = async () => {
+    const a = $('#pin1', sheetEl).value.trim(), b = $('#pin2', sheetEl).value.trim(), m = $('#pinMsg', sheetEl);
+    if (!/^\d{4,6}$/.test(a)) { m.textContent = 'Use 4 to 6 digits.'; return; }
+    if (a !== b) { m.textContent = 'The two passcodes are different.'; return; }
+    const salt = randStr(22);
+    const next = { len: a.length, salt, hash: await hashPin(a, salt), after: L?.after ?? 0, bio: null };
+    if ($('#pinBio', sheetEl)?.checked) {
+      try { next.bio = L?.bio || await bioRegister(); }
+      catch { m.textContent = `${bioName()} wasn't set up (cancelled). The passcode still works.`; }
+    }
+    setLock(next); toast(L ? 'Passcode changed' : 'App lock is on');
+    if (!m.textContent) { closeSheet(); render(); } else lockSettingsSheet();
+  };
+  $('#lockAfter', sheetEl)?.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return;
+    const cur = getLock(); cur.after = +b.dataset.v; setLock(cur);
+    $('#lockAfter', sheetEl).querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); });
+  $('#lockOff', sheetEl)?.addEventListener('click', () => { if (confirm('Turn off the app lock on this device?')) { setLock(null); toast('App lock is off'); closeSheet(); render(); } });
+}
+
 /* ---------------- start ---------------- */
 async function boot() {
   applyTheme();
+  if (getLock() && (tokens || S.demo)) showLock();
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   if (S.demo) {
     const d = lsJSON('mg.demoData'); if (d) { applyData(normalize(d), null); refreshRates(); return; }

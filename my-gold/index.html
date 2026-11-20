@@ -208,6 +208,24 @@ button.row:active{background:var(--press)}
 .welcome .btn.sec{background:rgba(255,255,255,.09);color:#FFF6DF}
 .welcome .feat{display:grid;grid-template-columns:1fr 1fr;gap:8px;max-width:400px;margin-top:22px;text-align:left;font-size:13px;color:#D9C9A3}
 .welcome .feat div{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:10px}
+
+/* App lock */
+.lock{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:calc(var(--safet) + 20px) 24px calc(var(--safeb) + 20px);
+  background:radial-gradient(90% 55% at 50% 0%,#4A3714 0%,transparent 70%),linear-gradient(180deg,#1A140B,#0B0905);color:#FFF6DF}
+.lock .logo{width:76px;height:76px;border-radius:20px;box-shadow:0 14px 40px rgba(226,184,74,.25)}
+.lock h2{font-family:var(--serif);font-size:26px;background:linear-gradient(180deg,#FFF1C9,#E2B84A);-webkit-background-clip:text;background-clip:text;color:transparent}
+.lock p{margin:0;color:#D9C9A3}
+.lock .linkbtn{color:#E2B84A}
+html.is-locked #app,html.is-locked .sheet,html.is-locked .scrim{visibility:hidden}
+.pindots{display:flex;gap:14px;margin:10px 0 14px}
+.pindots i{width:14px;height:14px;border-radius:50%;border:2px solid #A8987A}
+.pindots i.on{background:#E2B84A;border-color:#E2B84A}
+.pindots.shake{animation:shake .35s}
+@keyframes shake{25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
+.keypad{display:grid;grid-template-columns:repeat(3,76px);gap:14px 22px}
+.keypad button{width:76px;height:76px;border-radius:50%;border:1px solid rgba(226,184,74,.22);background:rgba(255,255,255,.06);font-size:28px;font-weight:400;color:#FFF6DF}
+.keypad button:active{background:rgba(226,184,74,.25)}
+.keypad span{width:76px}
 </style>
 </head>
 <body>
